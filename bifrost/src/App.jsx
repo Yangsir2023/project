@@ -137,6 +137,7 @@ function App() {
           </div>
         ) : code ? (
           <iframe 
+            key={code.length + Date.now()}
             srcDoc={code} 
             title="Preview" 
             style={{ width: '100%', height: '100%', border: 'none' }}
