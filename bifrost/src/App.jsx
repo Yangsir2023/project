@@ -75,16 +75,18 @@ const starterCode = `<!doctype html>
   </body>
 </html>`;
 
+const defaultHTML = (icon, title, desc) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><style>body{font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:linear-gradient(135deg,#f8fafc,#f1f5f9);color:#6b7280}.card{background:white;border:1px solid #e5e7eb;border-radius:16px;padding:48px 56px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.04);max-width:480px}.ico{font-size:56px;margin-bottom:20px;line-height:1}h2{color:#111827;font-size:22px;font-weight:700;margin:0 0 8px;letter-spacing:-.01em}p{font-size:14px;line-height:1.6;margin:0}</style></head><body><div class="card"><div class="ico">${icon}</div><h2>${title}</h2><p>${desc}</p></div></body></html>`;
+
 const defaultPipeline = {
   title: 'Data Pipeline Preview',
   summary: 'Describe a backend workflow on the right to visualize the pipeline here.',
   steps: [
-    ['Ingest', 'Collect raw data from forms, APIs, logs, or uploaded files.'],
-    ['Validate', 'Check schema, missing values, ranges, and duplicate records.'],
-    ['Transform', 'Clean, normalize, enrich, and join the dataset.'],
-    ['Analyze', 'Run metrics, models, aggregations, or experiment analysis.'],
-    ['Visualize', 'Render dashboards, charts, alerts, and reports.'],
-    ['Export', 'Send results to CSV, database, dashboard, or research appendix.'],
+    { title: 'Ingest', description: 'Collect raw data from forms, APIs, logs, or uploaded files.', html: defaultHTML('📥', 'Ingest', 'Collect raw data from forms, APIs, logs, or uploaded files.') },
+    { title: 'Validate', description: 'Check schema, missing values, ranges, and duplicate records.', html: defaultHTML('🔍', 'Validate', 'Check schema, missing values, ranges, and duplicate records.') },
+    { title: 'Transform', description: 'Clean, normalize, enrich, and join the dataset.', html: defaultHTML('⚙️', 'Transform', 'Clean, normalize, enrich, and join the dataset.') },
+    { title: 'Analyze', description: 'Run metrics, models, aggregations, or experiment analysis.', html: defaultHTML('📊', 'Analyze', 'Run metrics, models, aggregations, or experiment analysis.') },
+    { title: 'Visualize', description: 'Render dashboards, charts, alerts, and reports.', html: defaultHTML('📈', 'Visualize', 'Render dashboards, charts, alerts, and reports.') },
+    { title: 'Export', description: 'Send results to CSV, database, dashboard, or research appendix.', html: defaultHTML('📤', 'Export', 'Send results to CSV, database, dashboard, or research appendix.') },
   ],
 };
 
@@ -126,71 +128,431 @@ function logEvent(event) {
   localStorage.setItem(LOG_KEY, JSON.stringify(nextLog));
 }
 
-function PipelineView({ pipeline, isAiGenerated }) {
+// ── Pipeline Wizard (Intro → Steps → Summary) ────────────────────────────
+
+function StepRefineChat({ step, stepIndex, onUpdateHtml, getModel, cleanCode }) {
+  const [messages, setMessages] = React.useState([]);
+  const [input, setInput] = React.useState('');
+  const [refining, setRefining] = React.useState(false);
+  const bottomRef = React.useRef(null);
+
+  React.useEffect(() => {
+    // Reset chat when switching steps
+    setMessages([]);
+    setInput('');
+  }, [stepIndex]);
+
+  React.useEffect(() => {
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || refining) return;
+    setInput('');
+    const userMsg = { role: 'user', text };
+    setMessages((prev) => [...prev, userMsg]);
+    setRefining(true);
+
+    try {
+      const model = getModel();
+      const history = messages.map((m) => `${m.role}: ${m.text}`).join('\n');
+      const prompt = `You are Bifrost. The user is refining the output for pipeline step "${step.title}".
+Step description: ${step.description}
+${history ? `\nConversation so far:\n${history}` : ''}
+
+User instruction: ${text}
+
+Generate a COMPLETE standalone HTML page (with embedded CSS, no external dependencies except Google Fonts Inter) that shows this step's output reflecting the user's instruction.
+The page must look like a real production tool — real data tables, inline SVG charts, professional typography, colour schemes.
+Return ONLY valid HTML, no markdown, no explanation.`;
+
+      const result = await model.generateContent(prompt);
+      const resp = await result.response;
+      const html = cleanCode(resp.text());
+      onUpdateHtml(stepIndex, html);
+      setMessages((prev) => [...prev, { role: 'assistant', text: `Updated the preview for "${step.title}" based on your instruction.` }]);
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'assistant', text: `Error: ${err.message || 'Failed to refine step.'}` }]);
+    } finally {
+      setRefining(false);
+    }
+  };
+
   return (
-    <div className="pipeline-canvas">
-      <header className="pipeline-header">
-        <div className="pipeline-header-badge">
-          <span className="pipeline-badge-dot" />
-          Backend Behaviour Visualization
-          {isAiGenerated && <span className="pipeline-ai-tag">✦ AI Generated</span>}
-        </div>
-        <h2 className="pipeline-title">{pipeline.title}</h2>
-        <p className="pipeline-summary">{pipeline.summary}</p>
-      </header>
-
-      <div className="pipeline-intro">
-        <div className="pipeline-intro-icon">💡</div>
-        <div>
-          <strong>What is this Data Pipeline?</strong>
-          <p>This visualization represents the sequence of steps data goes through from collection to final output. It helps you understand how raw information is ingested, processed, analyzed, and finally exported or visualized, providing a clear architecture for your backend logic.</p>
-        </div>
+    <div className="pw-refine-chat">
+      <div className="pw-refine-chat-header">
+        <span className="pw-refine-chat-icon">✏️</span>
+        <span className="pw-refine-chat-title">Refine this step</span>
+        <span className="pw-refine-chat-hint">Describe changes — AI will regenerate the preview</span>
       </div>
 
-      <div className="pipeline-meta-row">
-        <span className="pipeline-stage-count">{pipeline.steps.length} stages</span>
-        <div className="pipeline-progress-track">
-          {pipeline.steps.map((_, i) => (
-            <div key={i} className="pipeline-progress-dot" style={{ animationDelay: `${i * 0.1}s` }} />
+      {messages.length > 0 && (
+        <div className="pw-refine-chat-history">
+          {messages.map((m, i) => (
+            <div key={i} className={`pw-refine-msg pw-refine-msg--${m.role}`}>
+              <span className="pw-refine-msg-label">{m.role === 'user' ? 'You' : 'Bifrost'}</span>
+              <span className="pw-refine-msg-text">{m.text}</span>
+            </div>
           ))}
+          {refining && (
+            <div className="pw-refine-msg pw-refine-msg--assistant">
+              <span className="pw-refine-msg-label">Bifrost</span>
+              <span className="pw-refine-msg-text pw-refine-typing">Generating…</span>
+            </div>
+          )}
+          <div ref={bottomRef} />
         </div>
-      </div>
+      )}
 
-      <div className="pipeline-scroll">
-        <div className="pipeline-flow">
-          {pipeline.steps.map(([title, description], index) => {
-            const color = NODE_COLORS[index % NODE_COLORS.length];
-            const icon = getStepIcon(title);
-            const isLast = index === pipeline.steps.length - 1;
+      <div className="pw-refine-input-row">
+        <textarea
+          className="pw-refine-textarea"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={`e.g. "Show a dark-mode terminal output" or "Add a bar chart for throughput"`}
+          disabled={refining}
+          rows={2}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+        />
+        <button
+          className={`pw-refine-send-btn${refining ? ' is-loading' : ''}`}
+          onClick={send}
+          disabled={!input.trim() || refining}
+        >
+          {refining ? '…' : '→'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PipelineView({ pipeline: initialPipeline, isAiGenerated, onRefineStep, onRequestRegenerate, getModel, cleanCodeFn }) {
+  const [pipeline, setPipeline] = React.useState(initialPipeline);
+  const [phase, setPhase] = React.useState('intro');
+  const [activeIdx, setActiveIdx] = React.useState(0);
+  const [confirmed, setConfirmed] = React.useState({});
+  const [fullscreen, setFullscreen] = React.useState(false);
+  const pipelineIdRef = React.useRef('');
+
+  React.useEffect(() => {
+    const newId = initialPipeline.title + '|' + initialPipeline.steps.length;
+    if (newId !== pipelineIdRef.current) {
+      pipelineIdRef.current = newId;
+      setPipeline(initialPipeline);
+      setPhase('intro');
+      setActiveIdx(0);
+      setConfirmed({});
+      setFullscreen(false);
+    }
+  }, [initialPipeline]);
+
+  const totalSteps = pipeline.steps.length;
+
+  const handleUpdateHtml = (idx, html) => {
+    setPipeline((p) => ({
+      ...p,
+      steps: p.steps.map((s, i) => (i === idx ? { ...s, html } : s)),
+    }));
+  };
+
+  const confirmStep = () => {
+    const next = { ...confirmed, [activeIdx]: true };
+    setConfirmed(next);
+    if (activeIdx < totalSteps - 1) {
+      setActiveIdx(activeIdx + 1);
+    } else {
+      setPhase('summary');
+    }
+  };
+
+  // ── INTRO ─────────────────────────────────────────────────────────────────
+  if (phase === 'intro') {
+    return (
+      <div className="pw-intro">
+        <div className="pw-intro-header">
+          <div className="pw-intro-badge">
+            {isAiGenerated && <span className="pw-ai-chip">✦ AI Generated</span>}
+            <span className="pw-intro-label">Backend Behaviour Visualization</span>
+          </div>
+          <h2 className="pw-intro-title">{pipeline.title}</h2>
+          <p className="pw-intro-summary">{pipeline.summary}</p>
+        </div>
+
+        <div className="pw-intro-what">
+          <span className="pw-intro-what-icon">💡</span>
+          <div>
+            <strong>What is this Data Pipeline?</strong>
+            <p>This visualization walks you through every stage of your data workflow — from raw input to final output. Review each step, refine it with AI, confirm it fits your design, then get a full summary.</p>
+          </div>
+        </div>
+
+        <div className="pw-intro-steps-grid">
+          {pipeline.steps.map((step, i) => {
+            const color = NODE_COLORS[i % NODE_COLORS.length];
             return (
-              <React.Fragment key={`${title}-${index}`}>
-                <article
-                  className="pipeline-node"
-                  style={{ '--node-bg': color.bg, '--node-border': color.border, '--node-num': color.num }}
-                >
-                  <div className="pipeline-node-top">
-                    <span className="pipeline-node-num" style={{ background: color.bg, color: color.num, borderColor: color.border }}>
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
-                    <span className="pipeline-node-icon">{icon}</span>
-                  </div>
-                  <h3 className="pipeline-node-title">{title}</h3>
-                  <p className="pipeline-node-desc">{description}</p>
-                  <div className="pipeline-node-footer">
-                    <span className="pipeline-node-step-label">Step {index + 1} of {pipeline.steps.length}</span>
-                    {isLast && <span className="pipeline-node-final-badge">✓ Output</span>}
-                  </div>
-                </article>
-                {!isLast && (
-                  <div className="pipeline-connector" aria-hidden="true">
-                    <div className="pipeline-connector-line" />
-                    <div className="pipeline-connector-arrow">›</div>
-                  </div>
-                )}
-              </React.Fragment>
+              <div
+                key={i}
+                className="pw-intro-step-card"
+                style={{ '--c-bg': color.bg, '--c-border': color.border, '--c-num': color.num }}
+                onClick={() => { setActiveIdx(i); setPhase('steps'); }}
+              >
+                <div className="pw-intro-step-top">
+                  <span className="pw-intro-step-num" style={{ background: color.bg, color: color.num, borderColor: color.border }}>
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span className="pw-intro-step-icon">{getStepIcon(step.title)}</span>
+                </div>
+                <div className="pw-intro-step-title">{step.title}</div>
+                <div className="pw-intro-step-desc">{step.description}</div>
+              </div>
             );
           })}
         </div>
+
+        <div className="pw-intro-actions">
+          <button className="pw-cta-btn" onClick={() => { setActiveIdx(0); setPhase('steps'); }}>
+            Get Started — Review Each Stage
+            <span className="pw-cta-arrow">→</span>
+          </button>
+          {onRequestRegenerate && (
+            <button className="pw-ghost-btn" onClick={onRequestRegenerate}>↺ Regenerate</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── STEPS ─────────────────────────────────────────────────────────────────
+  if (phase === 'steps') {
+    const step = pipeline.steps[activeIdx];
+    const color = NODE_COLORS[activeIdx % NODE_COLORS.length];
+    const isConfirmed = !!confirmed[activeIdx];
+    const isLast = activeIdx === totalSteps - 1;
+
+    return (
+      <div className="pw-steps">
+        {/* Sidebar */}
+        <div className="pw-steps-sidebar">
+          <button className="pw-back-btn" onClick={() => setPhase('intro')}>← Overview</button>
+          <div className="pw-steps-list">
+            {pipeline.steps.map((s, i) => (
+              <button
+                key={i}
+                className={`pw-step-item${i === activeIdx ? ' is-active' : ''}${confirmed[i] ? ' is-done' : ''}`}
+                onClick={() => setActiveIdx(i)}
+              >
+                <span className="pw-step-item-num"
+                  style={{ background: NODE_COLORS[i % NODE_COLORS.length].bg, color: NODE_COLORS[i % NODE_COLORS.length].num, borderColor: NODE_COLORS[i % NODE_COLORS.length].border }}>
+                  {confirmed[i] ? '✓' : String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="pw-step-item-label">
+                  <span className="pw-step-item-icon">{getStepIcon(s.title)}</span>
+                  {s.title}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="pw-steps-progress">
+            <div className="pw-progress-bar-track">
+              <div className="pw-progress-bar-fill" style={{ width: `${(Object.keys(confirmed).length / totalSteps) * 100}%` }} />
+            </div>
+            <span className="pw-progress-label">{Object.keys(confirmed).length} / {totalSteps} confirmed</span>
+          </div>
+        </div>
+
+        {/* Main */}
+        <div className="pw-steps-main">
+          {/* Step header */}
+          <div className="pw-step-header" style={{ '--c-bg': color.bg, '--c-border': color.border }}>
+            <div className="pw-step-header-left">
+              <span className="pw-step-header-num" style={{ background: color.bg, color: color.num, borderColor: color.border }}>
+                {String(activeIdx + 1).padStart(2, '0')}
+              </span>
+              <div>
+                <div className="pw-step-header-icon-title">
+                  <span>{getStepIcon(step.title)}</span>
+                  <h3 className="pw-step-title">{step.title}</h3>
+                </div>
+                <p className="pw-step-desc">{step.description}</p>
+              </div>
+            </div>
+            {isConfirmed && <span className="pw-step-confirmed-badge">✓ Confirmed</span>}
+          </div>
+
+          {/* iframe preview */}
+          <div className="pw-step-viewport">
+            <div className="pw-viewport-chrome">
+              <div className="pw-chrome-dots"><span /><span /><span /></div>
+              <span className="pw-chrome-title">{step.title}</span>
+              <button
+                className="pw-expand-btn"
+                onClick={() => setFullscreen(true)}
+                title="Open full view"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                </svg>
+                <span>Expand</span>
+              </button>
+            </div>
+            <div className="pw-viewport-body">
+              <iframe
+                key={`${activeIdx}-${step.html ? step.html.length : 0}`}
+                title={step.title}
+                srcDoc={step.html || `<html><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:Inter,sans-serif;color:#9ca3af;background:#f8fafc"><div style="text-align:center"><div style="font-size:40px;margin-bottom:12px">${getStepIcon(step.title)}</div><p style="font-size:14px;margin:0;font-weight:500">${step.title}</p><p style="font-size:12px;margin:8px 0 0;opacity:.7">${step.description}</p></div></body></html>`}
+                sandbox="allow-scripts allow-same-origin"
+              />
+            </div>
+          </div>
+
+          {/* Fullscreen modal */}
+          {fullscreen && (
+            <div className="pw-fs-overlay" onClick={(e) => { if (e.target === e.currentTarget) setFullscreen(false); }}>
+              <div className="pw-fs-panel">
+                {/* Modal chrome bar */}
+                <div className="pw-fs-chrome">
+                  <div className="pw-chrome-dots">
+                    <span onClick={() => setFullscreen(false)} style={{ cursor: 'pointer' }} title="Close" />
+                    <span /><span />
+                  </div>
+                  <div className="pw-fs-chrome-center">
+                    <span className="pw-fs-step-num" style={{ background: color.bg, color: color.num, borderColor: color.border }}>
+                      {String(activeIdx + 1).padStart(2, '0')}
+                    </span>
+                    <span className="pw-fs-step-icon">{getStepIcon(step.title)}</span>
+                    <span className="pw-fs-title">{step.title}</span>
+                    <span className="pw-fs-desc">{step.description}</span>
+                  </div>
+                  <div className="pw-fs-chrome-right">
+                    {/* Prev / Next inside modal */}
+                    <button className="pw-fs-nav-btn" disabled={activeIdx === 0}
+                      onClick={() => setActiveIdx(activeIdx - 1)}>←</button>
+                    <span className="pw-fs-nav-pos">{activeIdx + 1}/{totalSteps}</span>
+                    <button className="pw-fs-nav-btn" disabled={isLast}
+                      onClick={() => setActiveIdx(activeIdx + 1)}>→</button>
+                    <button className="pw-fs-close-btn" onClick={() => setFullscreen(false)} title="Close (Esc)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                </div>
+                {/* Full iframe */}
+                <div className="pw-fs-body">
+                  <iframe
+                    key={`fs-${activeIdx}-${step.html ? step.html.length : 0}`}
+                    title={`${step.title} — full view`}
+                    srcDoc={step.html || `<html><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:Inter,sans-serif;color:#9ca3af;background:#f8fafc"><div style="text-align:center"><div style="font-size:56px;margin-bottom:16px">${getStepIcon(step.title)}</div><p style="font-size:18px;margin:0;font-weight:600;color:#111827">${step.title}</p><p style="font-size:14px;margin:10px 0 0;opacity:.7">${step.description}</p></div></body></html>`}
+                    sandbox="allow-scripts allow-same-origin"
+                  />
+                </div>
+                {/* Modal footer: confirm from here too */}
+                <div className="pw-fs-footer">
+                  <button className="pw-ghost-btn" onClick={() => setFullscreen(false)}>
+                    ← Back to Pipeline
+                  </button>
+                  <button
+                    className={`pw-confirm-btn${isConfirmed ? ' is-confirmed' : ''}`}
+                    onClick={() => { confirmStep(); setFullscreen(false); }}
+                  >
+                    {isConfirmed
+                      ? (isLast ? '✓ Confirmed — View Summary' : '✓ Confirmed — Next Step')
+                      : (isLast ? 'Confirm Step — View Summary →' : 'Confirm Step — Next →')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Refine chat */}
+          {getModel && cleanCodeFn && (
+            <StepRefineChat
+              key={activeIdx}
+              step={step}
+              stepIndex={activeIdx}
+              onUpdateHtml={handleUpdateHtml}
+              getModel={getModel}
+              cleanCode={cleanCodeFn}
+            />
+          )}
+
+          {/* Footer nav */}
+          <div className="pw-step-footer">
+            <div className="pw-step-nav">
+              <button className="pw-nav-btn" disabled={activeIdx === 0} onClick={() => setActiveIdx(activeIdx - 1)}>
+                ← Prev
+              </button>
+              <span className="pw-step-pos">{activeIdx + 1} / {totalSteps}</span>
+              <button className="pw-nav-btn" disabled={isLast} onClick={() => { if (!isLast) setActiveIdx(activeIdx + 1); }}>
+                Next →
+              </button>
+            </div>
+            <button
+              className={`pw-confirm-btn${isConfirmed ? ' is-confirmed' : ''}`}
+              onClick={confirmStep}
+            >
+              {isConfirmed
+                ? (isLast ? '✓ Confirmed — View Summary' : '✓ Confirmed — Next Step')
+                : (isLast ? 'Confirm Step — View Summary →' : 'Confirm Step — Next →')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── SUMMARY ───────────────────────────────────────────────────────────────
+  return (
+    <div className="pw-summary">
+      <div className="pw-summary-header">
+        <div className="pw-summary-check">✓</div>
+        <h2 className="pw-summary-title">Pipeline Complete</h2>
+        <p className="pw-summary-subtitle">All {totalSteps} stages confirmed. Here is your complete data flow architecture.</p>
+      </div>
+
+      <div className="pw-summary-pipeline-title">
+        <strong>{pipeline.title}</strong>
+        <span>{pipeline.summary}</span>
+      </div>
+
+      <div className="pw-summary-flow">
+        {pipeline.steps.map((step, i) => {
+          const color = NODE_COLORS[i % NODE_COLORS.length];
+          const isLast = i === totalSteps - 1;
+          return (
+            <React.Fragment key={i}>
+              <div
+                className="pw-summary-node"
+                style={{ '--c-bg': color.bg, '--c-border': color.border, '--c-num': color.num }}
+                onClick={() => { setActiveIdx(i); setPhase('steps'); }}
+              >
+                <div className="pw-summary-node-top">
+                  <span className="pw-summary-node-num" style={{ background: color.bg, color: color.num, borderColor: color.border }}>
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span className="pw-summary-node-icon">{getStepIcon(step.title)}</span>
+                  <span className="pw-summary-done-mark">✓</span>
+                </div>
+                <div className="pw-summary-node-title">{step.title}</div>
+                <div className="pw-summary-node-desc">{step.description}</div>
+              </div>
+              {!isLast && <div className="pw-summary-arrow">→</div>}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      <div className="pw-summary-actions">
+        <button className="pw-cta-btn" onClick={() => { setActiveIdx(0); setPhase('steps'); }}>
+          ← Back to Steps
+        </button>
+        <button className="pw-ghost-btn" onClick={() => { setPhase('intro'); setConfirmed({}); }}>
+          Start Over
+        </button>
+        {onRequestRegenerate && (
+          <button className="pw-ghost-btn" onClick={onRequestRegenerate}>↺ Regenerate Pipeline</button>
+        )}
       </div>
     </div>
   );
@@ -250,19 +612,31 @@ Your task: design a clear, logical data pipeline for it.${variantHint}
 
 Return ONLY a valid JSON object — no markdown, no explanation, no code fences. The JSON must follow this exact schema:
 {
-  "title": "Short descriptive title for this pipeline (max 8 words)",
-  "summary": "One sentence describing what this pipeline does (max 25 words)",
+  "title": "Short descriptive title (max 8 words)",
+  "summary": "One sentence describing this pipeline (max 25 words)",
   "steps": [
-    ["Step Name", "One sentence describing what this step does and why it matters."],
+    {
+      "title": "Step Name",
+      "description": "One sentence describing what this step does and why it matters.",
+      "html": "<!doctype html>...complete HTML page showing this step's output..."
+    },
     ...
   ]
 }
 
 Rules:
-- Include 5 to 8 steps that are specific to the user's request, not generic placeholders.
-- Each step name should be a single meaningful verb or noun (e.g. "Ingest", "Deduplicate", "Score", "Notify").
+- Include 5 to 7 steps that are specific to the user's request, not generic placeholders.
+- Each step name should be a meaningful verb or noun (e.g. "Market Scan", "Filter Signals", "Score Stocks").
 - Each description must be concrete and specific to the described workflow.
 - Steps must flow logically from data source to final output.
+
+HTML rules for each step:
+- Generate a COMPLETE standalone HTML page with embedded CSS (no external dependencies except Google Fonts Inter).
+- Make it look like a REAL production application or data dashboard or terminal output — not a placeholder card.
+- Use realistic sample data, tables, inline SVG charts, color-coded indicators, professional typography.
+- Dark or light theme — choose what fits the step's purpose.
+- Each page should feel like you are looking at a real tool's output screen.
+- Keep each HTML under 2000 characters if possible, but prioritize quality over brevity.
 
 User request: ${request}`;
   };
@@ -273,11 +647,36 @@ User request: ${request}`;
     const response = await result.response;
     const raw = cleanJson(response.text());
     const parsed = JSON.parse(raw);
-    // Validate shape
     if (!parsed.title || !parsed.summary || !Array.isArray(parsed.steps) || parsed.steps.length < 2) {
       throw new Error('AI returned an invalid pipeline structure.');
     }
+    // Normalise steps to { title, description, html }
+    parsed.steps = parsed.steps.map((s) => {
+      if (Array.isArray(s)) return { title: s[0], description: s[1], html: defaultHTML(getStepIcon(s[0]), s[0], s[1]) };
+      return { title: s.title || '', description: s.description || '', html: s.html || '' };
+    });
     return parsed;
+  };
+
+  const refineStepHTML = async (stepIndex, keywords) => {
+    const step = pipeline.steps[stepIndex];
+    const model = getModel();
+    const prompt = `You are Bifrost. Refine the output for pipeline step "${step.title}".
+Original description: ${step.description}
+User refinement keywords: ${keywords}
+
+Generate ONLY a complete HTML page (with embedded CSS, no external deps except Google Fonts Inter) that shows this step's output.
+The page must look like a real production tool — real data tables, inline SVG charts, professional typography, proper color schemes.
+Return ONLY valid HTML, no markdown, no explanation. Keep under 3000 characters.`;
+
+    const result = await model.generateContent(prompt);
+    const resp = await result.response;
+    const html = cleanCode(resp.text());
+    // Update pipeline in place so PipelineView preserves activeIdx
+    setPipeline((p) => ({
+      ...p,
+      steps: p.steps.map((s, i) => (i === stepIndex ? { ...s, html } : s)),
+    }));
   };
 
   const startLoading = (mode = 'web') => {
@@ -570,11 +969,11 @@ User request: ${request}`;
           </div>
         )}
 
-        <div className="preview-frame-wrap">
+        <div className={`preview-frame-wrap${resultMode === 'pipeline' ? ' is-pipeline' : ''}`}>
           {resultMode === 'web' ? (
             <iframe title="Preview" srcDoc={code} onLoad={notePreviewViewed} />
           ) : (
-            <PipelineView pipeline={pipeline} isAiGenerated={pipelineIsAi} />
+            <PipelineView pipeline={pipeline} isAiGenerated={pipelineIsAi} onRefineStep={refineStepHTML} onRequestRegenerate={generateCode} getModel={getModel} cleanCodeFn={cleanCode} />
           )}
           {loading && (
             <div className="loading-overlay">
