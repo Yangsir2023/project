@@ -98,6 +98,34 @@ function cleanJson(text) {
   return text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 }
 
+function safeParseJson(raw) {
+  // First attempt: direct parse
+  try {
+    return JSON.parse(raw);
+  } catch (_) {}
+  // Second attempt: escape unescaped control characters inside JSON string values
+  try {
+    const sanitised = raw.replace(
+      /"((?:[^"\\]|\\.)*)"/gs,
+      (_, inner) => '"' + inner
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t')
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\x00-\x1F\x7F]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))
+      + '"',
+    );
+    return JSON.parse(sanitised);
+  } catch (_) {}
+  // Third attempt: extract just the outer JSON object, drop html fields that are broken
+  try {
+    const noHtml = raw.replace(/"html"\s*:\s*"(?:[^"\\]|\\.)*"/gs, '"html":""');
+    return JSON.parse(noHtml);
+  } catch (e) {
+    throw new Error(`Failed to parse pipeline JSON: ${e.message}`);
+  }
+}
+
 function hashCode(value) {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -235,6 +263,10 @@ function PipelineView({ pipeline: initialPipeline, isAiGenerated, onRefineStep, 
   const [activeIdx, setActiveIdx] = React.useState(0);
   const [confirmed, setConfirmed] = React.useState({});
   const [fullscreen, setFullscreen] = React.useState(false);
+  const [finalHtml, setFinalHtml] = React.useState('');
+  const [finalLoading, setFinalLoading] = React.useState(false);
+  const [finalError, setFinalError] = React.useState('');
+  const [showFinal, setShowFinal] = React.useState(false);
   const pipelineIdRef = React.useRef('');
 
   React.useEffect(() => {
@@ -246,6 +278,9 @@ function PipelineView({ pipeline: initialPipeline, isAiGenerated, onRefineStep, 
       setActiveIdx(0);
       setConfirmed({});
       setFullscreen(false);
+      setFinalHtml('');
+      setFinalError('');
+      setShowFinal(false);
     }
   }, [initialPipeline]);
 
@@ -503,6 +538,44 @@ function PipelineView({ pipeline: initialPipeline, isAiGenerated, onRefineStep, 
   }
 
   // ── SUMMARY ───────────────────────────────────────────────────────────────
+  const generateFinalPage = async () => {
+    if (!getModel || !cleanCodeFn) return;
+    setFinalLoading(true);
+    setFinalError('');
+    setShowFinal(true);
+    try {
+      const model = getModel();
+      const stepsContext = pipeline.steps
+        .map((s, i) => `Step ${i + 1} — ${s.title}: ${s.description}`)
+        .join('\n');
+      const prompt = `You are Bifrost. The user has reviewed and confirmed all stages of the following data pipeline:
+
+Pipeline: ${pipeline.title}
+Summary: ${pipeline.summary}
+
+Stages:
+${stepsContext}
+
+Generate a single, complete, production-quality HTML page that serves as the FINAL integrated output of this entire pipeline. This page should:
+- Visually combine all pipeline stages into one cohesive dashboard or interface
+- Show realistic sample data flowing through each stage
+- Use professional design: clear sections, data tables, inline SVG charts, status indicators
+- Feel like a real production tool or analytics dashboard that the pipeline produces
+- Include a header with the pipeline title and a brief description
+- Each stage should have a visible section or panel in the final page
+
+Return ONLY valid HTML with embedded CSS. No markdown, no explanation. Make it impressive.`;
+
+      const result = await model.generateContent(prompt);
+      const resp = await result.response;
+      setFinalHtml(cleanCodeFn(resp.text()));
+    } catch (err) {
+      setFinalError(err.message || 'Failed to generate final page.');
+    } finally {
+      setFinalLoading(false);
+    }
+  };
+
   return (
     <div className="pw-summary">
       <div className="pw-summary-header">
@@ -553,7 +626,87 @@ function PipelineView({ pipeline: initialPipeline, isAiGenerated, onRefineStep, 
         {onRequestRegenerate && (
           <button className="pw-ghost-btn" onClick={onRequestRegenerate}>↺ Regenerate Pipeline</button>
         )}
+        {getModel && (
+          <button className="pw-final-btn" onClick={generateFinalPage} disabled={finalLoading}>
+            {finalLoading ? (
+              <><span className="pw-final-spinner" /> Generating…</>
+            ) : (
+              <>✦ View Full Pipeline Page</>
+            )}
+          </button>
+        )}
       </div>
+
+      {/* Final page fullscreen modal */}
+      {showFinal && (
+        <div className="pw-fs-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowFinal(false); }}>
+          <div className="pw-fs-panel">
+            <div className="pw-fs-chrome">
+              <div className="pw-chrome-dots">
+                <span onClick={() => setShowFinal(false)} style={{ cursor: 'pointer' }} title="Close" />
+                <span /><span />
+              </div>
+              <div className="pw-fs-chrome-center">
+                <span className="pw-fs-title">✦ {pipeline.title} — Full Pipeline Page</span>
+                <span className="pw-fs-desc">{pipeline.summary}</span>
+              </div>
+              <div className="pw-fs-chrome-right">
+                {!finalLoading && !finalError && finalHtml && (
+                  <button
+                    className="pw-fs-nav-btn"
+                    title="Regenerate"
+                    onClick={generateFinalPage}
+                    style={{ width: 'auto', padding: '0 10px', fontSize: '12px', gap: '4px' }}
+                  >
+                    ↺ Regenerate
+                  </button>
+                )}
+                <button className="pw-fs-close-btn" onClick={() => setShowFinal(false)} title="Close (Esc)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="pw-fs-body">
+              {finalLoading && (
+                <div className="pw-final-loading">
+                  <div className="pw-final-loading-spinner" />
+                  <p>Generating your complete pipeline page…</p>
+                  <span>Combining all {totalSteps} stages into one unified view</span>
+                </div>
+              )}
+              {finalError && !finalLoading && (
+                <div className="pw-final-error">
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+                  <p>{finalError}</p>
+                  <button className="pw-cta-btn" onClick={generateFinalPage} style={{ marginTop: 16 }}>Try Again</button>
+                </div>
+              )}
+              {!finalLoading && !finalError && finalHtml && (
+                <iframe
+                  key={finalHtml.length}
+                  title="Full Pipeline Page"
+                  srcDoc={finalHtml}
+                  sandbox="allow-scripts allow-same-origin"
+                  style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                />
+              )}
+            </div>
+
+            <div className="pw-fs-footer">
+              <button className="pw-ghost-btn" onClick={() => setShowFinal(false)}
+                style={{ borderColor: 'rgba(255,255,255,0.15)', color: '#94a3b8', background: 'transparent' }}>
+                ← Back to Summary
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                  {pipeline.steps.length} stages · AI Generated
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -610,52 +763,74 @@ Generate a complete, production-quality single page web app, standalone interact
     return `You are Bifrost, a backend data pipeline visualizer. The user has described a workflow or system.
 Your task: design a clear, logical data pipeline for it.${variantHint}
 
-Return ONLY a valid JSON object — no markdown, no explanation, no code fences. The JSON must follow this exact schema:
+Return ONLY a valid JSON object — no markdown, no explanation, no code fences, no HTML inside the JSON.
+The JSON must follow this exact schema:
 {
   "title": "Short descriptive title (max 8 words)",
   "summary": "One sentence describing this pipeline (max 25 words)",
   "steps": [
     {
       "title": "Step Name",
-      "description": "One sentence describing what this step does and why it matters.",
-      "html": "<!doctype html>...complete HTML page showing this step's output..."
-    },
-    ...
+      "description": "One sentence describing what this step does and why it matters."
+    }
   ]
 }
 
 Rules:
-- Include 5 to 7 steps that are specific to the user's request, not generic placeholders.
+- Include 5 to 7 steps specific to the user's request, not generic placeholders.
 - Each step name should be a meaningful verb or noun (e.g. "Market Scan", "Filter Signals", "Score Stocks").
 - Each description must be concrete and specific to the described workflow.
 - Steps must flow logically from data source to final output.
-
-HTML rules for each step:
-- Generate a COMPLETE standalone HTML page with embedded CSS (no external dependencies except Google Fonts Inter).
-- Make it look like a REAL production application or data dashboard or terminal output — not a placeholder card.
-- Use realistic sample data, tables, inline SVG charts, color-coded indicators, professional typography.
-- Dark or light theme — choose what fits the step's purpose.
-- Each page should feel like you are looking at a real tool's output screen.
-- Keep each HTML under 2000 characters if possible, but prioritize quality over brevity.
+- Do NOT include any HTML in the JSON. Return only title and description per step.
 
 User request: ${request}`;
   };
+
+  const buildStepHtmlPrompt = (pipelineTitle, step) =>
+    `You are Bifrost. Generate a standalone HTML page for one step in the "${pipelineTitle}" data pipeline.
+
+Step: ${step.title}
+Description: ${step.description}
+
+Requirements:
+- Return ONLY valid HTML with embedded CSS. No markdown, no explanation, no JSON.
+- Make it look like a REAL production tool output — data tables, inline SVG charts, terminal output, or dashboard panel.
+- Use realistic sample data relevant to the step.
+- Professional typography (Google Fonts Inter is allowed).
+- Dark or light theme — choose what fits best.
+- Keep it under 3000 characters.`;
 
   const generatePipelineWithAI = async (request, variant = null) => {
     const model = getModel();
     const result = await model.generateContent(buildPipelinePrompt(request, variant));
     const response = await result.response;
     const raw = cleanJson(response.text());
-    const parsed = JSON.parse(raw);
+    const parsed = safeParseJson(raw);
     if (!parsed.title || !parsed.summary || !Array.isArray(parsed.steps) || parsed.steps.length < 2) {
       throw new Error('AI returned an invalid pipeline structure.');
     }
-    // Normalise steps to { title, description, html }
-    parsed.steps = parsed.steps.map((s) => {
-      if (Array.isArray(s)) return { title: s[0], description: s[1], html: defaultHTML(getStepIcon(s[0]), s[0], s[1]) };
+    // Normalise steps: ensure { title, description } shape, no html yet
+    const baseSteps = parsed.steps.map((s) => {
+      if (Array.isArray(s)) return { title: s[0], description: s[1], html: '' };
       return { title: s.title || '', description: s.description || '', html: s.html || '' };
     });
-    return parsed;
+
+    // Generate HTML for each step in parallel (separate API calls — no JSON contamination)
+    const stepsWithHtml = await Promise.all(
+      baseSteps.map(async (step) => {
+        if (step.html) return step; // already has html (shouldn't happen but just in case)
+        try {
+          const r = await model.generateContent(buildStepHtmlPrompt(parsed.title, step));
+          const html = cleanCode(r.response.text());
+          return { ...step, html };
+        } catch (_) {
+          // Fall back to placeholder card if individual step fails
+          return { ...step, html: defaultHTML(getStepIcon(step.title), step.title, step.description) };
+        }
+      }),
+    );
+
+    return { title: parsed.title, summary: parsed.summary, steps: stepsWithHtml };
   };
 
   const refineStepHTML = async (stepIndex, keywords) => {
