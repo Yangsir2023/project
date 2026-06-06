@@ -1,94 +1,105 @@
-import React, { useEffect, useRef } from 'react';
-import * as echarts from 'echarts';
+import React from 'react';
 
-function formatTime(value) {
+function formatTime(iso) {
   return new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  }).format(new Date(value));
+  }).format(new Date(iso));
 }
 
+/**
+ * VersionPanel — Monica / PopAi inspired slide-over panel
+ * Props:
+ *   open            boolean
+ *   versions        Array<{ id, timestamp, prompt, code, mode }>
+ *   currentVersionId  number | null
+ *   onClose         () => void
+ *   onRestore       (version) => void
+ */
 function VersionPanel({ open, versions, currentVersionId, onClose, onRestore }) {
-  const chartRef = useRef(null);
-
-  useEffect(() => {
-    if (!open || !chartRef.current) return undefined;
-
-    const chart = echarts.init(chartRef.current);
-    const nodes = versions.map((version, index) => ({
-      id: String(version.id),
-      name: `v${index + 1}`,
-      x: 40 + index * 46,
-      y: 48,
-      symbolSize: version.id === currentVersionId ? 30 : 22,
-      itemStyle: {
-        color: version.id === currentVersionId ? '#0070f3' : '#10b981',
-      },
-    }));
-    const links = versions.slice(1).map((version, index) => ({
-      source: String(versions[index].id),
-      target: String(version.id),
-    }));
-
-    chart.setOption({
-      backgroundColor: 'transparent',
-      tooltip: { show: true },
-      animationDuration: 400,
-      series: [{
-        type: 'graph',
-        layout: 'none',
-        roam: false,
-        label: { show: true, color: '#111827', fontSize: 11 },
-        lineStyle: { color: '#0070f3', width: 2 },
-        data: nodes,
-        links,
-      }],
-    });
-
-    chart.on('click', (params) => {
-      const match = versions.find((version) => String(version.id) === params.data?.id);
-      if (match) onRestore(match);
-    });
-
-    const resize = () => chart.resize();
-    window.addEventListener('resize', resize);
-
-    return () => {
-      window.removeEventListener('resize', resize);
-      chart.dispose();
-    };
-  }, [currentVersionId, onRestore, open, versions]);
+  // Close on Escape key
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
 
   return (
-    <aside className={`version-panel ${open ? 'open' : ''}`}>
-      <header>
-        <div>
-          <p>Version Graph</p>
-          <h2>History</h2>
+    <>
+      {/* Backdrop */}
+      {open && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99,
+            background: 'rgba(0,0,0,0.25)',
+            backdropFilter: 'blur(2px)',
+            animation: 'overlay-in 0.15s ease both',
+          }}
+          onClick={onClose}
+        />
+      )}
+
+      <aside className={`version-panel${open ? ' open' : ''}`}>
+        {/* Header */}
+        <div className="version-panel-header">
+          <div className="version-panel-title">
+            <h2>History</h2>
+            {versions.length > 0 && (
+              <span className="version-count-badge">{versions.length}</span>
+            )}
+          </div>
+          <button className="version-panel-close" onClick={onClose} title="Close (Esc)">
+            ×
+          </button>
         </div>
-        <button type="button" onClick={onClose}>Close</button>
-      </header>
 
-      <div className="version-chart" ref={chartRef}>
-        {versions.length === 0 && <span>No versions yet</span>}
-      </div>
-
-      <div className="timeline">
-        {versions.length === 0 ? (
-          <div className="empty-history">Generate a website to create the first version.</div>
-        ) : versions.map((version, index) => (
-          <article className={`version-node ${version.id === currentVersionId ? 'active' : ''}`} key={version.id}>
-            <div>
-              <strong>v{index + 1}</strong>
-              <time>{formatTime(version.timestamp)}</time>
+        {/* List */}
+        <div className="version-list">
+          {versions.length === 0 ? (
+            <div className="version-empty">
+              <div className="version-empty-icon">📋</div>
+              <div className="version-empty-text">No versions yet</div>
+              <div className="version-empty-hint">Generate something to create the first version.</div>
             </div>
-            <p>{version.prompt.slice(0, 50)}{version.prompt.length > 50 ? '...' : ''}</p>
-            <button type="button" onClick={() => onRestore(version)}>Restore</button>
-          </article>
-        ))}
-      </div>
-    </aside>
+          ) : (
+            [...versions].reverse().map((version, revIdx) => {
+              const realIdx = versions.length - 1 - revIdx; // display newest first
+              const isActive = version.id === currentVersionId;
+              return (
+                <div
+                  key={version.id}
+                  className={`version-item${isActive ? ' active' : ''}`}
+                  onClick={() => onRestore(version)}
+                >
+                  <div className="version-item-top">
+                    <div className="version-item-label">
+                      <span className="version-num">v{realIdx + 1}</span>
+                      <span className={`version-mode-badge ${version.mode || 'web'}`}>
+                        {version.mode === 'pipeline' ? '⬡ Pipeline' : '⬡ Web'}
+                      </span>
+                    </div>
+                    <span className="version-time">{formatTime(version.timestamp)}</span>
+                  </div>
+
+                  <div className="version-prompt">
+                    {version.prompt || '(no prompt)'}
+                  </div>
+
+                  <button
+                    className="version-restore-btn"
+                    onClick={(e) => { e.stopPropagation(); onRestore(version); }}
+                  >
+                    {isActive ? '✓ Current' : '↩ Restore'}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </aside>
+    </>
   );
 }
 
