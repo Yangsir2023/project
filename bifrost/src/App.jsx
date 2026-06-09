@@ -3,6 +3,22 @@ import React, {
 } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import VersionPanel from './VersionPanel.jsx';
+import VisualCanvas from './pipeline/VisualCanvas.jsx';
+import {
+  generatePipeline,
+  compileApprovedNodes,
+  reviseNode,
+  generateFinalDashboard,
+  ENGINE_STAGES,
+} from './pipeline/pipelineEngine.js';
+import {
+  createPipeline,
+  createNode,
+  createNodeSkeleton,
+  updateNode,
+  NODE_STATUS,
+  inferStepIcon,
+} from './pipeline/types.js';
 
 /* ────────────────────────────────────────────────────────────
    Constants
@@ -19,12 +35,30 @@ const GENERATION_STAGES = [
   { label: 'Rendering in sandbox…',       icon: '🚀' },
 ];
 
-const PIPELINE_STAGES = [
-  { label: 'Analysing your workflow…',    icon: '🔍' },
-  { label: 'Mapping pipeline stages…',   icon: '🗺️' },
-  { label: 'Designing data flow…',       icon: '🌊' },
-  { label: 'Generating step previews…',  icon: '🎨' },
-];
+/* Engine stages are imported from pipelineEngine.js */
+const PIPELINE_STAGES = ENGINE_STAGES;
+
+/* Build default IR pipeline for the empty state */
+function buildDefaultIrPipeline() {
+  const defaultSteps = [
+    { title: 'Ingest',    desc: 'Collect raw data from forms, APIs, logs, or uploaded files.',   type: 'ingest'    },
+    { title: 'Validate',  desc: 'Check schema, missing values, ranges, and duplicate records.',   type: 'validate'  },
+    { title: 'Transform', desc: 'Clean, normalize, enrich, and join the dataset.',                type: 'transform' },
+    { title: 'Analyze',   desc: 'Run metrics, models, aggregations, or experiment analysis.',     type: 'analyze'   },
+    { title: 'Export',    desc: 'Send results to CSV, database, dashboard, or appendix.',         type: 'export'    },
+  ];
+  const pipe = createPipeline({ title: 'Data Pipeline Preview', summary: 'Describe a backend workflow to visualize the pipeline here.', phase: 'idle' });
+  defaultSteps.forEach((s, i) => {
+    const node = createNode({
+      type:   s.type,
+      status: NODE_STATUS.IDLE,
+      skeleton: createNodeSkeleton({ icon: inferStepIcon(s.title), title: s.title, description: s.desc, colorKey: i }),
+    });
+    pipe.nodeOrder.push(node.id);
+    pipe.nodes[node.id] = node;
+  });
+  return pipe;
+}
 
 /* Prompt template library (Dify / Typeflow inspiration) */
 const PROMPT_TEMPLATES = [
@@ -752,8 +786,13 @@ function App() {
   const [resultMode, setResultMode]       = useState('web');
   const [provider, setProvider]           = useState('gemini');
   const [code, setCode]                   = useState(starterCode);
-  const [pipeline, setPipeline]           = useState(defaultPipeline);
+  /* New IR-based pipeline state */
+  const [irPipeline, setIrPipeline]       = useState(() => buildDefaultIrPipeline());
+  const [pipeline, setPipeline]           = useState(defaultPipeline); // legacy, kept for variants
   const [pipelineIsAi, setPipelineIsAi]   = useState(false);
+  const [finalDashHtml, setFinalDashHtml] = useState('');
+  const [finalDashLoading, setFinalDashLoading] = useState(false);
+  const [showFinalDash, setShowFinalDash] = useState(false);
   const [messages, setMessages]           = useState([
     { role: 'assistant', text: 'Hello! I\'m Bifrost — your AI visual coding assistant. Describe an interface or backend process, and I\'ll instantly render it for you. Press ? for keyboard shortcuts.' },
   ]);
@@ -950,11 +989,16 @@ Requirements:
     if (resultMode === 'pipeline') {
       startLoading('pipeline');
       try {
-        const next = await generatePipelineWithAI(prompt);
-        setPipeline(next); setPipelineIsAi(true);
-        saveVersion(prompt, next, 'pipeline');
-        appendConversation(prompt, `Generated a ${next.steps.length}-stage data pipeline: "${next.title}".`);
-        logEvent({ type: 'generate_success', duration_ms: Date.now() - startedAt, code_length: JSON.stringify(next).length });
+        const model   = getModel();
+        const newPipe = await generatePipeline(model, prompt, {
+          onProgress: (idx) => setStageIndex(idx),
+        });
+        setIrPipeline(newPipe);
+        setPipelineIsAi(true);
+        setFinalDashHtml('');
+        saveVersion(prompt, newPipe, 'pipeline');
+        appendConversation(prompt, `Generated a ${newPipe.nodeOrder.length}-stage visual pipeline: "${newPipe.title}". Review each block and approve to compile.`);
+        logEvent({ type: 'generate_success', duration_ms: Date.now() - startedAt, code_length: JSON.stringify(newPipe).length });
       } catch (err) {
         setError(err.message || 'Failed to generate pipeline');
         appendConversation(prompt, `Pipeline generation failed: ${err.message}`);
@@ -998,9 +1042,14 @@ Requirements:
       setVariants(labels.map((label) => ({ label, loading: true, pipeline: null })));
       startLoading('pipeline');
       try {
-        const results = await Promise.all(focuses.map(async (focus, i) => ({ label: labels[i], loading: false, pipeline: await generatePipelineWithAI(prompt, focus) })));
+        const model   = getModel();
+        const results = await Promise.all(focuses.map(async (focus, i) => ({
+          label:    labels[i],
+          loading:  false,
+          pipeline: await generatePipeline(model, `${prompt} — Focus: ${focus}`, {}),
+        })));
         setVariants(results); setSelectedVariant(0);
-        setPipeline(results[0].pipeline); setPipelineIsAi(true);
+        setIrPipeline(results[0].pipeline); setPipelineIsAi(true);
         saveVersion(`${prompt} (${labels[0]})`, results[0].pipeline, 'pipeline');
         appendConversation(prompt, `Generated three AI pipeline variants: ${labels.join(', ')}.`);
         logEvent({ type: 'generate_success', duration_ms: Date.now() - startedAt });
@@ -1043,7 +1092,7 @@ Requirements:
     if (!variant) return;
     setSelectedVariant(index);
     if (resultMode === 'pipeline' && variant.pipeline) {
-      setPipeline(variant.pipeline); setPipelineIsAi(true);
+      setIrPipeline(variant.pipeline); setPipelineIsAi(true);
       saveVersion(`${prompt} (${variant.label})`, variant.pipeline, 'pipeline');
       return;
     }
@@ -1059,7 +1108,26 @@ Requirements:
     setSelectedVariant(null);
     if (version.mode === 'pipeline') {
       setResultMode('pipeline');
-      setPipeline(JSON.parse(version.code));
+      try {
+        const parsed = typeof version.code === 'string' ? JSON.parse(version.code) : version.code;
+        // Handle both old format (steps array) and new IR format (nodeOrder/nodes)
+        if (parsed.nodeOrder && parsed.nodes) {
+          setIrPipeline(parsed);
+        } else if (Array.isArray(parsed.steps)) {
+          // Legacy format — convert to IR
+          const pipe = createPipeline({ title: parsed.title, summary: parsed.summary, phase: 'done', isAiGenerated: true });
+          (parsed.steps || []).forEach((s, i) => {
+            const node = createNode({
+              type: 'custom', status: NODE_STATUS.COMPILED,
+              skeleton: createNodeSkeleton({ icon: inferStepIcon(s.title), title: s.title, description: s.description, colorKey: i }),
+              html: s.html || '',
+            });
+            pipe.nodeOrder.push(node.id);
+            pipe.nodes[node.id] = node;
+          });
+          setIrPipeline(pipe);
+        }
+      } catch (_) {}
       setPipelineIsAi(true);
     } else {
       setResultMode('web');
@@ -1186,14 +1254,74 @@ Requirements:
           {resultMode === 'web' ? (
             <iframe title="Preview" srcDoc={code} />
           ) : (
-            <PipelineView
-              pipeline={pipeline}
-              isAiGenerated={pipelineIsAi}
-              onRefineStep={() => {}}
-              onRequestRegenerate={generateCode}
-              getModel={getModel}
-              isDark={theme === 'dark'}
-            />
+            <>
+              <VisualCanvas
+                pipeline={irPipeline}
+                onPipelineChange={(updated) => {
+                  setIrPipeline(updated);
+                  // Auto-compile when a node is approved
+                  const newlyApproved = updated.nodeOrder
+                    .map((id) => updated.nodes[id])
+                    .filter((n) => n.status === NODE_STATUS.APPROVED);
+                  if (newlyApproved.length > 0) {
+                    (async () => {
+                      try {
+                        const model   = getModel();
+                        const compiled = await compileApprovedNodes(model, updated, {
+                          onNodeCompiled: (p) => setIrPipeline({ ...p }),
+                        });
+                        setIrPipeline(compiled);
+                      } catch (err) {
+                        setError(err.message || 'Compile failed');
+                      }
+                    })();
+                  }
+                  // Auto-revise when a node is rejected
+                  const rejected = updated.nodeOrder
+                    .map((id) => updated.nodes[id])
+                    .filter((n) => n.status === NODE_STATUS.REJECTED);
+                  if (rejected.length > 0) {
+                    (async () => {
+                      try {
+                        const model = getModel();
+                        let p = updated;
+                        for (const node of rejected) {
+                          p = await reviseNode(model, p, node.id);
+                        }
+                        setIrPipeline(p);
+                      } catch (err) {
+                        setError(err.message || 'Revision failed');
+                      }
+                    })();
+                  }
+                }}
+                onRequestRegenerate={generateCode}
+                isDark={theme === 'dark'}
+              />
+
+              {/* Final Dashboard CTA — shown when pipeline is done */}
+              {irPipeline.phase === 'done' && (
+                <div className="pipeline-done-bar">
+                  <span className="pipeline-done-text">
+                    ✅ All steps compiled — <strong>{irPipeline.nodeOrder.length} stages</strong> ready
+                  </span>
+                  <button
+                    className="pipeline-final-btn"
+                    onClick={async () => {
+                      setFinalDashLoading(true); setShowFinalDash(true);
+                      try {
+                        const html = await generateFinalDashboard(getModel(), irPipeline);
+                        setFinalDashHtml(html);
+                      } catch (err) { setError(err.message); }
+                      finally { setFinalDashLoading(false); }
+                    }}
+                    disabled={finalDashLoading}
+                  >
+                    {finalDashLoading ? '⚙ Generating…' : '✦ View Full Dashboard'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           {/* Loading overlay — Storm / AgentGPT style */}
@@ -1370,6 +1498,38 @@ Requirements:
           </div>
         </div>
       </aside>
+
+      {/* ── Final Dashboard Modal ── */}
+      {showFinalDash && (
+        <div className="pw-fs-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowFinalDash(false); }}>
+          <div className="pw-fs-panel">
+            <div className="pw-fs-chrome">
+              <div className="pw-chrome-dots"><span onClick={() => setShowFinalDash(false)} style={{ cursor: 'pointer' }} /><span /><span /></div>
+              <div className="pw-fs-chrome-center">
+                <span className="pw-fs-title">✦ {irPipeline.title} — Full Dashboard</span>
+                <span className="pw-fs-desc">{irPipeline.summary}</span>
+              </div>
+              <div className="pw-fs-chrome-right">
+                <button className="pw-fs-close-btn" onClick={() => setShowFinalDash(false)}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </div>
+            <div className="pw-fs-body">
+              {finalDashLoading && (
+                <div className="pw-final-loading">
+                  <div className="pw-final-loading-spinner" />
+                  <p>Compiling final dashboard…</p>
+                  <span>Combining all {irPipeline.nodeOrder.length} stages</span>
+                </div>
+              )}
+              {!finalDashLoading && finalDashHtml && (
+                <iframe key={finalDashHtml.length} title="Final Dashboard" srcDoc={finalDashHtml} sandbox="allow-scripts allow-same-origin" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Version History Panel ── */}
       <VersionPanel
