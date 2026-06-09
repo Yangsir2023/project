@@ -1,199 +1,254 @@
 /**
- * ╔══════════════════════════════════════════════════════════════╗
- * ║  Bifrost Pipeline — Intermediate Representation (IR) Types  ║
- * ║  Inspired by: LLM4Workflow (DAG), InstructPipe, Flowco       ║
- * ╚══════════════════════════════════════════════════════════════╝
+ * Pipeline PPT-IR — Intermediate Representation (PPT 模式)
  *
- * Core idea from PPT slide 4 (学术基石):
- *   "我们将晦涩的图论与伪代码，转化为大众最熟悉的 PPT 排版范式"
- *
- * A pipeline is modeled as a DAG (Directed Acyclic Graph) of nodes.
- * Each node has:
- *   - An IR skeleton (visual intermediate representation)
- *   - A status in the state machine
- *   - An optional compiled HTML preview
+ * PPT 核心概念 (来自 Visual_AI_Web_Engine.pptx):
+ *   - 每个 pipeline 节点 = 一张"幻灯片" (Slide)
+ *   - 幻灯片包含多种内容块 (SlideBlock): 标题/文本/代码/图表/图片/数据表
+ *   - AI 生成骨架 → 用户 PPT 式编辑 → 系统编译为代码
+ *   - Human-in-the-loop: 每张幻灯片独立审批
  */
 
-/* ─── Node Status State Machine ───────────────────────────────
- *
- *  idle ──► skeleton_pending ──► skeleton_ready
- *                                      │
- *                               user_reviewing
- *                                 │         │
- *                           approved      rejected
- *                              │              │
- *                        compiling         revising
- *                              │
- *                           compiled
- *
- * ─────────────────────────────────────────────────────────── */
-export const NODE_STATUS = {
-  IDLE:             'idle',
-  SKELETON_PENDING: 'skeleton_pending',
-  SKELETON_READY:   'skeleton_ready',
-  USER_REVIEWING:   'user_reviewing',
-  APPROVED:         'approved',
-  REJECTED:         'rejected',
-  REVISING:         'revising',
-  COMPILING:        'compiling',
-  COMPILED:         'compiled',
-  ERROR:            'error',
+/* ── 内容块类型 ─────────────────────────────────────────────── */
+export const BLOCK_TYPE = {
+  TITLE:     'title',      // 大标题
+  TEXT:      'text',       // 段落文本
+  CODE:      'code',       // 代码/伪代码
+  CHART:     'chart',      // 数据图表 (饼图/折线/柱状)
+  IMAGE:     'image',      // 图片占位框
+  TABLE:     'table',      // 数据表格
+  BADGE:     'badge',      // 状态徽章列表
+  CONNECTOR: 'connector',  // 连接器/IO 标注
 };
 
-/* ─── Node Types ──────────────────────────────────────────── */
-export const NODE_TYPE = {
-  // Data ingestion
-  SOURCE:    'source',
-  INGEST:    'ingest',
-  // Processing
-  TRANSFORM: 'transform',
-  VALIDATE:  'validate',
-  FILTER:    'filter',
-  ENRICH:    'enrich',
-  // Analysis
-  ANALYZE:   'analyze',
-  MODEL:     'model',
-  // Output
-  VISUALIZE: 'visualize',
-  EXPORT:    'export',
-  NOTIFY:    'notify',
-  // Custom
-  CUSTOM:    'custom',
+/* ── 幻灯片布局模板 ─────────────────────────────────────────── */
+export const SLIDE_LAYOUT = {
+  TITLE_ONLY:     'title_only',      // 纯标题 + 副标题
+  TITLE_CONTENT:  'title_content',   // 标题 + 内容块
+  TWO_COLUMN:     'two_column',      // 左右双栏
+  CODE_PREVIEW:   'code_preview',    // 左代码 + 右预览
+  FULL_CHART:     'full_chart',      // 全幅图表
+  CHECKLIST:      'checklist',       // 清单式
 };
 
-/* ─── Node Skeleton (IR) ──────────────────────────────────── */
-/**
- * NodeSkeleton = the "PPT slide" intermediate representation.
- * This is what the user sees and tweaks BEFORE compilation.
- * Fields mirror a PPT block layout that anyone can understand.
- */
-export function createNodeSkeleton(overrides = {}) {
-  return {
-    // Displayed on the Visual Block card
-    icon:        overrides.icon        || '🔷',
-    title:       overrides.title       || 'Untitled Step',
-    subtitle:    overrides.subtitle    || '',
-    description: overrides.description || '',
-    // Pseudocode preview (from InstructPipe concept)
-    pseudocode:  overrides.pseudocode  || '',
-    // Input / Output schema hints (shown as tag pills)
-    inputs:      overrides.inputs      || [],   // string[]
-    outputs:     overrides.outputs     || [],   // string[]
-    // Visual style hint for the block
-    colorKey:    overrides.colorKey    || 0,    // index into palette
-  };
-}
+/* ── 幻灯片状态 ─────────────────────────────────────────────── */
+export const SLIDE_STATUS = {
+  IDLE:      'idle',       // 未生成
+  SKELETON:  'skeleton',   // 骨架已生成，待审批
+  EDITING:   'editing',    // 用户正在编辑
+  APPROVED:  'approved',   // 用户已审批
+  COMPILING: 'compiling',  // AI 正在编译为代码
+  COMPILED:  'compiled',   // 编译完成（有 html）
+  REJECTED:  'rejected',   // 拒绝，需修订
+  ERROR:     'error',      // 编译出错
+};
 
-/* ─── Pipeline Node ───────────────────────────────────────── */
-export function createNode(overrides = {}) {
-  const id = overrides.id || `node_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+/* ── 整体管道阶段 ────────────────────────────────────────────── */
+export const PIPELINE_PHASE = {
+  IDLE:      'idle',
+  PARSING:   'parsing',    // 意图解析
+  SKELETON:  'skeleton',   // 生成骨架幻灯片
+  REVIEW:    'review',     // 等待用户审批
+  COMPILING: 'compiling',  // 逐片编译
+  DONE:      'done',       // 全部完成
+};
+
+/* ── 颜色主题（对应 PPT 里的色块系统）─────────────────────── */
+export const SLIDE_THEMES = [
+  { bg: '#1e3a5f', accent: '#60a5fa', text: '#e0f2fe', border: '#3b82f6' },  // 深蓝
+  { bg: '#1a2e1a', accent: '#4ade80', text: '#dcfce7', border: '#22c55e' },  // 深绿
+  { bg: '#2d1b3d', accent: '#c084fc', text: '#f3e8ff', border: '#a855f7' },  // 深紫
+  { bg: '#2d1f0f', accent: '#fb923c', text: '#fff7ed', border: '#f97316' },  // 深橙
+  { bg: '#1f2937', accent: '#94a3b8', text: '#f1f5f9', border: '#64748b' },  // 深灰
+  { bg: '#1c2537', accent: '#38bdf8', text: '#e0f2fe', border: '#0ea5e9' },  // 科技蓝
+];
+
+/* ── 工厂函数 ────────────────────────────────────────────────── */
+
+/** 创建一个内容块 */
+export function createBlock(overrides = {}) {
+  const id = `block_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   return {
     id,
-    type:       overrides.type       || NODE_TYPE.CUSTOM,
-    status:     overrides.status     || NODE_STATUS.IDLE,
-    skeleton:   overrides.skeleton   || createNodeSkeleton(),
-    html:       overrides.html       || '',       // compiled preview HTML
-    // User feedback collected during Human-in-the-loop review
-    userNote:   overrides.userNote   || '',
-    approved:   overrides.approved   || false,
-    // Position in the canvas grid (column, row)
-    col:        overrides.col        ?? 0,
-    row:        overrides.row        ?? 0,
+    type:     overrides.type     ?? BLOCK_TYPE.TEXT,
+    content:  overrides.content  ?? '',
+    language: overrides.language ?? 'python',   // for CODE blocks
+    caption:  overrides.caption  ?? '',
+    // 位置 (相对幻灯片画布, %)
+    x:        overrides.x        ?? 5,
+    y:        overrides.y        ?? 10,
+    w:        overrides.w        ?? 90,
+    h:        overrides.h        ?? 20,
+    style:    overrides.style    ?? {},          // 额外样式覆盖
+    ...overrides,
+    id,
   };
 }
 
-/* ─── Pipeline IR ─────────────────────────────────────────── */
+/** 创建一张幻灯片 */
+export function createSlide(overrides = {}) {
+  const id = `slide_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const themeIdx = overrides.themeIndex ?? Math.floor(Math.random() * SLIDE_THEMES.length);
+  return {
+    id,
+    status:      overrides.status     ?? SLIDE_STATUS.IDLE,
+    layout:      overrides.layout     ?? SLIDE_LAYOUT.TITLE_CONTENT,
+    themeIndex:  themeIdx,
+    theme:       SLIDE_THEMES[themeIdx],
+    // 标识信息
+    stepTitle:   overrides.stepTitle  ?? 'New Step',
+    stepType:    overrides.stepType   ?? 'custom',
+    stepIcon:    overrides.stepIcon   ?? '🔹',
+    description: overrides.description ?? '',
+    // 内容块列表（按 y 轴排列）
+    blocks:      overrides.blocks     ?? [],
+    // I/O 标注
+    inputs:      overrides.inputs     ?? [],
+    outputs:     overrides.outputs    ?? [],
+    // Human-in-the-loop
+    reviewNote:  overrides.reviewNote ?? '',
+    // 编译结果
+    html:        overrides.html       ?? '',
+    compiledAt:  null,
+    ...overrides,
+    id,
+    theme: SLIDE_THEMES[themeIdx],
+  };
+}
+
+/** 创建整个管道 */
 export function createPipeline(overrides = {}) {
   return {
-    id:          overrides.id          || `pipe_${Date.now()}`,
-    title:       overrides.title       || 'New Pipeline',
-    summary:     overrides.summary     || '',
-    // Ordered node IDs defining the linear path (for display)
-    // Real DAG edges stored in `edges`
-    nodeOrder:   overrides.nodeOrder   || [],
-    nodes:       overrides.nodes       || {},     // Record<id, Node>
-    // DAG edges: [{ from: id, to: id }]
-    edges:       overrides.edges       || [],
-    // Overall pipeline phase
-    phase:       overrides.phase       || 'idle', // idle | generating | reviewing | compiling | done
-    isAiGenerated: overrides.isAiGenerated || false,
-    createdAt:   overrides.createdAt   || new Date().toISOString(),
+    id:         `pipe_${Date.now()}`,
+    title:      overrides.title    ?? 'Untitled Pipeline',
+    summary:    overrides.summary  ?? '',
+    phase:      overrides.phase    ?? PIPELINE_PHASE.IDLE,
+    slideOrder: overrides.slideOrder ?? [],
+    slides:     overrides.slides   ?? {},
+    isAiGenerated: overrides.isAiGenerated ?? false,
+    createdAt:  Date.now(),
+    ...overrides,
   };
 }
 
-/* ─── Helper: get ordered nodes array ─────────────────────── */
-export function getOrderedNodes(pipeline) {
-  return pipeline.nodeOrder
-    .map((id) => pipeline.nodes[id])
-    .filter(Boolean);
-}
+/* ── 幻灯片 CRUD 辅助 ────────────────────────────────────────── */
 
-/* ─── Helper: update node in pipeline (immutable) ─────────── */
-export function updateNode(pipeline, nodeId, patch) {
+export function updateSlide(pipeline, slideId, patch) {
+  if (!pipeline.slides[slideId]) return pipeline;
   return {
     ...pipeline,
-    nodes: {
-      ...pipeline.nodes,
-      [nodeId]: { ...pipeline.nodes[nodeId], ...patch },
+    slides: {
+      ...pipeline.slides,
+      [slideId]: { ...pipeline.slides[slideId], ...patch },
     },
   };
 }
 
-/* ─── Helper: update node skeleton ───────────────────────── */
-export function updateNodeSkeleton(pipeline, nodeId, skeletonPatch) {
-  const node = pipeline.nodes[nodeId];
-  if (!node) return pipeline;
-  return updateNode(pipeline, nodeId, {
-    skeleton: { ...node.skeleton, ...skeletonPatch },
+export function updateBlock(pipeline, slideId, blockId, patch) {
+  const slide = pipeline.slides[slideId];
+  if (!slide) return pipeline;
+  return updateSlide(pipeline, slideId, {
+    blocks: slide.blocks.map((b) => (b.id === blockId ? { ...b, ...patch } : b)),
   });
 }
 
-/* ─── Step icon map (from PPT concept) ─────────────────────── */
-export const STEP_ICONS = {
-  ingest: '📥', collect: '📥', import: '📥', input: '📥', source: '📥', load: '📥',
-  stream: '🌊', realtime: '🌊', queue: '🌊', buffer: '🌊', event: '🌊',
-  validate: '🔍', check: '🔍', verify: '🔍', inspect: '🔍', test: '🔍',
-  clean: '🧹', sanitize: '🧹', filter: '🧹', dedupe: '🧹',
-  transform: '⚙️', process: '⚙️', convert: '⚙️', parse: '⚙️', enrich: '⚙️',
-  join: '🔗', merge: '🔗', combine: '🔗', aggregate: '🔗',
-  analyze: '📊', analyse: '📊', compute: '📊', metrics: '📊', score: '📊',
-  model: '🤖', train: '🤖', predict: '🤖', infer: '🤖', evaluate: '🤖',
-  visualize: '📈', visualise: '📈', chart: '📈', report: '📈', dashboard: '📈',
-  store: '💾', save: '💾', persist: '💾', write: '💾',
-  export: '📤', send: '📤', deliver: '📤', publish: '📤', output: '📤',
-  notify: '🔔', alert: '🔔', monitor: '🔔', watch: '🔔',
-  auth: '🔐', secure: '🔐', encrypt: '🔐',
-  api: '🌐', fetch: '🌐', request: '🌐', sync: '🌐',
-  cache: '⚡', index: '⚡', optimize: '⚡',
-};
+export function addSlide(pipeline, slide, afterId = null) {
+  const order = [...pipeline.slideOrder];
+  const idx = afterId ? order.indexOf(afterId) : order.length - 1;
+  order.splice(idx + 1, 0, slide.id);
+  return {
+    ...pipeline,
+    slideOrder: order,
+    slides: { ...pipeline.slides, [slide.id]: slide },
+  };
+}
 
-export function inferStepIcon(title = '') {
-  const key = title.toLowerCase().replace(/[^a-z]/g, '');
-  for (const [word, icon] of Object.entries(STEP_ICONS)) {
-    if (key.includes(word)) return icon;
+export function removeSlide(pipeline, slideId) {
+  const order = pipeline.slideOrder.filter((id) => id !== slideId);
+  const slides = { ...pipeline.slides };
+  delete slides[slideId];
+  return { ...pipeline, slideOrder: order, slides };
+}
+
+export function moveSlide(pipeline, slideId, direction) {
+  const order = [...pipeline.slideOrder];
+  const idx = order.indexOf(slideId);
+  if (direction === 'left' && idx > 0) {
+    [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+  } else if (direction === 'right' && idx < order.length - 1) {
+    [order[idx + 1], order[idx]] = [order[idx], order[idx + 1]];
   }
+  return { ...pipeline, slideOrder: order };
+}
+
+/* ── Icon 推断 ───────────────────────────────────────────────── */
+export function inferStepIcon(title = '') {
+  const t = title.toLowerCase();
+  if (t.includes('ingest') || t.includes('input') || t.includes('collect')) return '📥';
+  if (t.includes('valid') || t.includes('check') || t.includes('verify'))   return '✅';
+  if (t.includes('clean') || t.includes('transform') || t.includes('process')) return '🔄';
+  if (t.includes('analyz') || t.includes('model') || t.includes('train'))   return '🧠';
+  if (t.includes('export') || t.includes('output') || t.includes('deploy')) return '🚀';
+  if (t.includes('fetch') || t.includes('api') || t.includes('request'))    return '🌐';
+  if (t.includes('store') || t.includes('save') || t.includes('database'))  return '🗄️';
+  if (t.includes('notify') || t.includes('alert') || t.includes('send'))    return '📢';
+  if (t.includes('filter') || t.includes('select') || t.includes('query'))  return '🔍';
+  if (t.includes('join') || t.includes('merge') || t.includes('combine'))   return '🔗';
   return '🔷';
 }
 
-/* ─── Color Palettes ──────────────────────────────────────── */
-export const NODE_PALETTE_LIGHT = [
-  { bg: '#eff6ff', border: '#bfdbfe', num: '#1d4ed8', icon: '#3b82f6', label: 'Blue'   },
-  { bg: '#f0fdf4', border: '#bbf7d0', num: '#15803d', icon: '#22c55e', label: 'Green'  },
-  { bg: '#fdf4ff', border: '#e9d5ff', num: '#7e22ce', icon: '#a855f7', label: 'Purple' },
-  { bg: '#fff7ed', border: '#fed7aa', num: '#c2410c', icon: '#f97316', label: 'Orange' },
-  { bg: '#f0f9ff', border: '#bae6fd', num: '#0369a1', icon: '#0ea5e9', label: 'Sky'    },
-  { bg: '#fefce8', border: '#fef08a', num: '#854d0e', icon: '#eab308', label: 'Yellow' },
-  { bg: '#fff1f2', border: '#fecdd3', num: '#9f1239', icon: '#f43f5e', label: 'Rose'   },
-  { bg: '#f0fdfa', border: '#99f6e4', num: '#0f766e', icon: '#14b8a6', label: 'Teal'   },
-];
+/* ── 默认管道（展示用）────────────────────────────────────────── */
+export function buildDefaultPipeline() {
+  const steps = [
+    { icon: '📥', title: 'Data Ingest',  type: 'ingest',    layout: SLIDE_LAYOUT.TITLE_CONTENT, themeIndex: 0,
+      desc: 'Collect raw data from APIs, forms, files, or event streams.',
+      pseudocode: '# Stage 1: Ingest\nsource = DataSource(config)\nraw = source.fetch(start=T0, end=T1)\nvalidate_schema(raw)',
+      inputs: ['CSV File', 'REST API'], outputs: ['Raw DataFrame'] },
+    { icon: '✅', title: 'Validate',     type: 'validate',  layout: SLIDE_LAYOUT.TWO_COLUMN,   themeIndex: 1,
+      desc: 'Check schema completeness, data types, and constraint violations.',
+      pseudocode: '# Stage 2: Validate\nschema.check(raw)\nassert no_nulls(raw, cols=required)\nreport = quality_report(raw)',
+      inputs: ['Raw DataFrame'], outputs: ['Validated Data', 'Error Report'] },
+    { icon: '🔄', title: 'Transform',   type: 'transform', layout: SLIDE_LAYOUT.CODE_PREVIEW,  themeIndex: 2,
+      desc: 'Normalize, enrich, deduplicate, and join datasets.',
+      pseudocode: '# Stage 3: Transform\nclean  = normalize(validated)\njoined = join(clean, lookup_table)\nenriched = add_features(joined)',
+      inputs: ['Validated Data'], outputs: ['Feature DataFrame'] },
+    { icon: '🧠', title: 'Analyze',     type: 'analyze',   layout: SLIDE_LAYOUT.FULL_CHART,    themeIndex: 3,
+      desc: 'Run statistical models, ML inference, or aggregation pipelines.',
+      pseudocode: '# Stage 4: Analyze\nmodel.fit(train_df)\npredictions = model.predict(enriched)\nmetrics = evaluate(predictions, ground_truth)',
+      inputs: ['Feature DataFrame'], outputs: ['Predictions', 'Metrics'] },
+    { icon: '🚀', title: 'Export',      type: 'export',    layout: SLIDE_LAYOUT.CHECKLIST,     themeIndex: 4,
+      desc: 'Write results to CSV, database, dashboard API, or trigger alerts.',
+      pseudocode: '# Stage 5: Export\ndb.write(predictions, table="results")\ndashboard.push(metrics)\nalert_if(error_rate > threshold)',
+      inputs: ['Predictions', 'Metrics'], outputs: ['DB Table', 'Dashboard'] },
+  ];
 
-export const NODE_PALETTE_DARK = [
-  { bg: '#1e3a5f', border: '#1d4ed8', num: '#93c5fd', icon: '#60a5fa', label: 'Blue'   },
-  { bg: '#14532d', border: '#15803d', num: '#86efac', icon: '#4ade80', label: 'Green'  },
-  { bg: '#2e1065', border: '#7e22ce', num: '#d8b4fe', icon: '#c084fc', label: 'Purple' },
-  { bg: '#431407', border: '#c2410c', num: '#fdba74', icon: '#fb923c', label: 'Orange' },
-  { bg: '#0c4a6e', border: '#0369a1', num: '#7dd3fc', icon: '#38bdf8', label: 'Sky'    },
-  { bg: '#422006', border: '#854d0e', num: '#fde047', icon: '#facc15', label: 'Yellow' },
-  { bg: '#4c0519', border: '#9f1239', num: '#fda4af', icon: '#fb7185', label: 'Rose'   },
-  { bg: '#134e4a', border: '#0f766e', num: '#5eead4', icon: '#2dd4bf', label: 'Teal'   },
-];
+  const pipe = createPipeline({
+    title: 'Data Processing Pipeline',
+    summary: 'A 5-stage AI-generated data pipeline. Click any slide to edit, then Approve → Compile.',
+    phase: PIPELINE_PHASE.IDLE,
+  });
+
+  steps.forEach((s, i) => {
+    const blocks = [
+      createBlock({ type: BLOCK_TYPE.TITLE,   content: s.title, x: 5, y: 5,  w: 90, h: 12 }),
+      createBlock({ type: BLOCK_TYPE.TEXT,    content: s.desc,  x: 5, y: 20, w: 90, h: 18 }),
+      createBlock({ type: BLOCK_TYPE.CODE,    content: s.pseudocode, language: 'python', x: 5, y: 42, w: 90, h: 45 }),
+      createBlock({ type: BLOCK_TYPE.CONNECTOR, content: JSON.stringify({ inputs: s.inputs, outputs: s.outputs }), x: 5, y: 90, w: 90, h: 8 }),
+    ];
+    const slide = createSlide({
+      stepTitle:   s.title,
+      stepType:    s.type,
+      stepIcon:    s.icon,
+      description: s.desc,
+      layout:      s.layout,
+      themeIndex:  s.themeIndex,
+      blocks,
+      inputs:      s.inputs,
+      outputs:     s.outputs,
+      status:      SLIDE_STATUS.IDLE,
+    });
+    pipe.slideOrder.push(slide.id);
+    pipe.slides[slide.id] = slide;
+  });
+
+  return pipe;
+}

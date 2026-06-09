@@ -1,30 +1,30 @@
-# 阶段 2 测试报告：全功能回归与稳定性验证
+# Phase 2 Test Report: Full Regression & Stability Verification
 
-## 测试用例记录表
+## Test Case Log
 
-| 测试项 | 功能 | 结果 | 问题 |
+| # | Feature | Result | Issues |
 |---|---|---|---|
-| 1 | 基础代码生成 | - | - |
-| 2 | 增量热更新 | - | - |
-| 3 | 加载 / 错误提示 | - | - |
-| 4 | API 超时重试 | - | - |
-| 5 | 安全沙箱拦截 | - | - |
-| 6 | 双视图固定布局 | - | - |
-| 7 | 长期稳定不崩溃 | - | - |
+| 1 | Basic code generation | - | - |
+| 2 | Incremental live update | - | - |
+| 3 | Loading / error feedback | - | - |
+| 4 | API timeout & retry | - | - |
+| 5 | Secure sandbox blocking | - | - |
+| 6 | Dual-pane fixed layout | - | - |
+| 7 | Long-run stability | - | - |
 
-## 测试详情
+## Test Details
 
-1. **基础代码生成**：生成红色按钮，点击弹出 Hello World
-2. **增量热更新**：生成带样式的登录表单，然后修改按钮颜色
-3. **加载 / 错误提示**：输入乱码无效 Prompt
-4. **API 超时重试**：断网状态下点击生成
-5. **安全沙箱拦截**：输入读取本地文件的恶意代码
-6. **双视图固定布局**：最小化窗口、调整窗口大小
-7. **压力与稳定性**：连续快速点击生成 10 次，软件持续运行 30 分钟
+1. **Basic code generation**: Generate a red button that shows a "Hello World" alert on click.
+2. **Incremental live update**: Generate a styled login form, then modify the button colour.
+3. **Loading / error feedback**: Submit an invalid or gibberish prompt.
+4. **API timeout & retry**: Click generate while offline / network disconnected.
+5. **Secure sandbox blocking**: Input malicious code that attempts to read local files.
+6. **Dual-pane fixed layout**: Minimise the window and resize it to various dimensions.
+7. **Stress & stability**: Rapidly click generate 10 times in succession; keep the app running for 30 minutes.
 
-## BUG 修复记录
+## Bug Fix Log
 
-- **BUG1**：连续生成导致 WebView 卡顿
-  - **修复方案**：优化生成流程，避免频繁重载或清理旧资源。
-- **BUG2**：窗口缩放后双视图错位
-  - **修复方案**：强制 CSS 固定布局。
+- **BUG 1**: Continuous generation caused WebView to freeze.
+  - **Fix**: Optimised the generation flow to avoid frequent reloads and properly clean up stale resources.
+- **BUG 2**: Dual-pane layout misaligned after window resize.
+  - **Fix**: Enforced fixed CSS layout with `height: 100%` and `overflow: hidden` constraints.
