@@ -10,6 +10,7 @@ import { augmentPromptWithRAG, getRecommendedComponents, getRecommendedPatterns 
 import { buildDAGFromSlides, getDAGStats } from './dag/dagEngine.js';
 import { analyzeFlow, formatFlowReport, FLOW_STATUS, VALIDATION_LEVEL } from './flowco/flowcoEngine.js';
 import { DEPLOY_TARGET, DEPLOY_STATUS } from './deploy/deployService.js';
+import LandingPage from './landing/LandingPage.jsx';
 import './App.css';
 
 /* ─── API Key (supports .env or localStorage) ────────────── */
@@ -53,7 +54,8 @@ const DEMO_PROMPTS = [
 
 /* ─── Root App ─────────────────────────────────────────────────── */
 export default function App() {
-  const [phase, setPhaseState] = useState(PHASE.CHAT);
+  const [showLanding, setShowLanding] = useState(true);
+  const [phase, setPhaseState]       = useState(PHASE.CHAT);
   const [apiKey, setApiKeyState]     = useState(getApiKey());
   const [showApiInput, setShowApiInput] = useState(!getApiKey());
   const [apiInputValue, setApiInputValue] = useState('');
@@ -72,6 +74,15 @@ export default function App() {
   const [compileLog, setCompileLog] = useState([]);
   const [deployUrl, setDeployUrl]   = useState('');
   const [userIntent, setUserIntent]   = useState('');
+
+  /* ── LandingPage → 进入 Chat ─────────────────────────── */
+  const handleGetStarted = useCallback(() => {
+    setShowLanding(false);
+    setPhaseState(PHASE.CHAT);
+    setMessages([
+      { role: 'assistant', text: "Welcome to Bifrost! 🎉\n\nDescribe the website you want to build — I'll help clarify your requirements, then generate an editable PPT-style visual sketch." }
+    ]);
+  }, []);
 
   // ── RAG state ──────────────────────────────────────────
   const [ragComponents, setRagComponents] = useState([]);
@@ -365,7 +376,9 @@ export default function App() {
       ═════════════════════════════════════════════════════════ */
   return (
     <div className="app" data-phase={phase}>
-
+      {showLanding ? (
+        <LandingPage onEnter={handleGetStarted} />
+      ) : (<>
       {/* ── Top nav ─────────────────────────────────────────────── */}
       <header className="topbar">
         <div className="topbar-logo" onClick={handleReset}>
@@ -865,8 +878,9 @@ export default function App() {
         </div>
       )}
 
-    </div>
-  );
+    </>)}
+  </div>
+);
 }
 
 /* ═══════════════════════════════════════════════════════════════
