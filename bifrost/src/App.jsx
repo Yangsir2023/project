@@ -3,7 +3,13 @@ import React, {
 } from 'react';
 import VisualEditor from './editor/VisualEditor.jsx';
 import ProposalViewer from './proposal/ProposalViewer.jsx';
+import DAGViewer from './dag/DAGViewer.jsx';
+import DeployPanel from './deploy/DeployPanel.jsx';
 import { generateSkeleton, compileSlide, generateFinalCode } from './engine/aiEngine.js';
+import { augmentPromptWithRAG, getRecommendedComponents, getRecommendedPatterns } from './rag/ragEngine.js';
+import { buildDAGFromSlides, getDAGStats } from './dag/dagEngine.js';
+import { analyzeFlow, formatFlowReport, FLOW_STATUS, VALIDATION_LEVEL } from './flowco/flowcoEngine.js';
+import { DEPLOY_TARGET, DEPLOY_STATUS } from './deploy/deployService.js';
 import './App.css';
 
 /* ─── API Key (supports .env or localStorage) ────────────── */
@@ -66,6 +72,23 @@ export default function App() {
   const [compileLog, setCompileLog] = useState([]);
   const [deployUrl, setDeployUrl]   = useState('');
   const [userIntent, setUserIntent]   = useState('');
+
+  // ── RAG state ──────────────────────────────────────────
+  const [ragComponents, setRagComponents] = useState([]);
+  const [ragPatterns, setRagPatterns]     = useState([]);
+  const [showRagPanel, setShowRagPanel]   = useState(false);
+
+  // ── DAG state ──────────────────────────────────────────
+  const [dag, setDag]           = useState(null);
+  const [showDagPanel, setShowDagPanel] = useState(false);
+
+  // ── Flowco state ───────────────────────────────────────
+  const [flowReport, setFlowReport]     = useState(null);
+  const [showFlowPanel, setShowFlowPanel] = useState(false);
+
+  // ── Deploy state ───────────────────────────────────────
+  const [showDeployPanel, setShowDeployPanel] = useState(false);
+  const [isDeployingReal, setIsDeployingReal] = useState(false);
 
   const chatEndRef  = useRef(null);
   const inputRef    = useRef(null);
@@ -182,15 +205,31 @@ export default function App() {
     try {
       const log = (msg) => setCompileLog(prev => [...prev, msg]);
 
+      // ── Stage 0: RAG 检索增强 ──────────────────────────────
       log('🔍 Analysing intent…');
-      log('📐 Generating PPT proposal slides…');
+      log('📚 Retrieving relevant components from knowledge base (RAG)…');
+      const ragResults = getRecommendedComponents(promptToUse, 6);
+      const patResults = getRecommendedPatterns(promptToUse);
+      setRagComponents(ragResults);
+      setRagPatterns(patResults);
+
+      if (ragResults.length > 0) {
+        log(`🧩 Found ${ragResults.length} matching components via RAG`);
+        if (patResults.length > 0) {
+          log(`🗂 Matched layout pattern: ${patResults[0].pattern.name}`);
+        }
+      }
+
+      // RAG 增强 Prompt
+      const augmentedPrompt = augmentPromptWithRAG(promptToUse);
+      log('📐 Generating PPT proposal slides with RAG context…');
 
       const key = getApiKey();
       let rawSlides;
 
       if (key) {
         try {
-          rawSlides = await generateSkeletonREST(key, promptToUse, log);
+          rawSlides = await generateSkeletonREST(key, augmentedPrompt, log);
         } catch (e) {
           console.warn('AI generate failed, using fallback:', e.message);
           rawSlides = buildFallbackSlides(promptToUse);
@@ -204,6 +243,21 @@ export default function App() {
       setSlides(slidesWithProposal);
       setUserIntent(promptToUse);
       log(`✅ Generated ${rawSlides.length} slides`);
+
+      // ── DAG 构建 ────────────────────────────────────────────
+      log('🕸 Building DAG dependency graph…');
+      const newDag = buildDAGFromSlides(slidesWithProposal, promptToUse);
+      setDag(newDag);
+      const dagStats = getDAGStats(newDag);
+      log(`◈ DAG: ${dagStats.totalNodes} nodes, ${dagStats.parallelGroups} layers, max parallelism ×${dagStats.maxParallelism}`);
+
+      // ── Flowco 数据流分析 ────────────────────────────────────
+      log('🔬 Running Flowco data flow analysis…');
+      const report = analyzeFlow(slidesWithProposal);
+      setFlowReport(report);
+      const fmt = formatFlowReport(report);
+      log(`${fmt.icon} Flowco: ${fmt.summaryText}`);
+
       log('💬 Entering proposal review mode — discuss each slide…');
       await delay(400);
       setPhaseState(PHASE.PROPOSAL);
@@ -213,6 +267,17 @@ export default function App() {
       setPhaseState(PHASE.CHAT);
     }
   }, [messages]);
+
+  /* ── Re-run Flowco when slides change ────────────────── */
+  const handleSlidesChangeWithFlowco = useCallback((newSlides) => {
+    setSlides(newSlides);
+    // 幻灯片每次变化都重新分析数据流
+    const report = analyzeFlow(newSlides);
+    setFlowReport(report);
+    // 同步更新 DAG
+    const newDag = buildDAGFromSlides(newSlides, userIntent);
+    setDag(newDag);
+  }, [userIntent]);
 
   /* ── Compile single slide ──────────────────────────────────── */
   const handleCompileSlide = useCallback(async (idx) => {
@@ -340,6 +405,48 @@ export default function App() {
         </nav>
 
         <div className="topbar-right">
+          {/* ── 新功能快捷按钮 ── 仅在生成后显示 ── */}
+          {slides.length > 0 && (
+            <>
+              {/* RAG 提示 */}
+              {ragComponents.length > 0 && (
+                <button
+                  className="topbar-btn topbar-btn--feature"
+                  onClick={() => setShowRagPanel(v => !v)}
+                  title="RAG — Component Suggestions"
+                >
+                  📚 RAG <span className="topbar-btn-badge">{ragComponents.length}</span>
+                </button>
+              )}
+              {/* DAG 依赖图 */}
+              {dag && (
+                <button
+                  className="topbar-btn topbar-btn--feature"
+                  onClick={() => setShowDagPanel(v => !v)}
+                  title="DAG — Workflow Dependencies"
+                >
+                  ◈ DAG
+                </button>
+              )}
+              {/* Flowco 校验 */}
+              {flowReport && (() => {
+                const fmt = formatFlowReport(flowReport);
+                return (
+                  <button
+                    className={`topbar-btn topbar-btn--feature topbar-btn--flow-${flowReport.status}`}
+                    onClick={() => setShowFlowPanel(v => !v)}
+                    title="Flowco — Data Flow Validation"
+                  >
+                    {fmt.icon} Flowco
+                    {flowReport.summary.errors > 0 && (
+                      <span className="topbar-btn-badge topbar-btn-badge--error">{flowReport.summary.errors}</span>
+                    )}
+                  </button>
+                );
+              })()}
+            </>
+          )}
+
           {phase !== PHASE.CHAT && (
             <button className="topbar-btn" onClick={handleReset}>↩ Start Over</button>
           )}
@@ -518,10 +625,14 @@ export default function App() {
       {phase === PHASE.PROPOSAL && (
         <ProposalViewer
           slides={slides}
-          onSlidesChange={setSlides}
+          onSlidesChange={handleSlidesChangeWithFlowco}
           onProceedToEdit={handleProceedToEdit}
           userIntent={userIntent}
           apiKey={apiKey}
+          flowReport={flowReport}
+          dag={dag}
+          ragComponents={ragComponents}
+          ragPatterns={ragPatterns}
         />
       )}
 
@@ -549,14 +660,8 @@ export default function App() {
       {phase === PHASE.DONE && (
         <main className="done-stage">
           <div className="done-left">
-            <div className="done-success-badge">✓ Published</div>
-            <h2 className="done-title">Your website is ready</h2>
-
-            <div className="done-url-bar">
-              <span className="done-url-icon">🔗</span>
-              <span className="done-url-text">{deployUrl || 'https://bifrost.app/preview/...'}</span>
-              <button className="done-url-copy" onClick={() => navigator.clipboard?.writeText(deployUrl)}>Copy</button>
-            </div>
+            <div className="done-success-badge">✓ Generated</div>
+            <h2 className="done-title">Your website is ready to deploy</h2>
 
             <div className="done-stats">
               {[
@@ -571,28 +676,51 @@ export default function App() {
               ))}
             </div>
 
+            {/* ── Flowco 摘要 ──────────────────────────── */}
+            {flowReport && (() => {
+              const fmt = formatFlowReport(flowReport);
+              return (
+                <div className={`done-flow-badge done-flow-badge--${flowReport.status}`}>
+                  <span>{fmt.icon} Flowco: {fmt.summaryText}</span>
+                  {flowReport.status !== FLOW_STATUS.VALID && (
+                    <button className="done-flow-details" onClick={() => setShowFlowPanel(true)}>
+                      View Issues
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* ── 快捷操作 ─────────────────────────────── */}
             <div className="done-actions">
               <button className="done-btn done-btn--primary" onClick={() => {
                 const w = window.open();
                 w?.document.write(finalHtml);
                 w?.document.close();
               }}>🚀 Open Preview</button>
-              <button className="done-btn" onClick={() => {
-                const blob = new Blob([finalHtml], { type: 'text/html' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = 'index.html';
-                a.click();
-              }}>⬇ Download HTML</button>
               <button className="done-btn" onClick={() => setPhaseState(PHASE.EDIT)}>✎ Continue Editing</button>
               <button className="done-btn" onClick={handleReset}>↩ Start Over</button>
             </div>
+
+            {/* ── 真实部署面板 ─────────────────────────── */}
+            <DeployPanel
+              html={finalHtml}
+              isDeploying={isDeployingReal}
+              setIsDeploying={setIsDeployingReal}
+              onDeployComplete={(result) => {
+                setDeployUrl(result.url);
+              }}
+            />
           </div>
 
           <div className="done-right">
             <div className="done-preview-bar">
               <div className="done-preview-dots"><span/><span/><span/></div>
-              <div className="done-preview-url">{deployUrl || 'https://bifrost.app/preview/...'}</div>
+              <div className="done-preview-url">
+                {deployUrl && deployUrl !== `https://bifrost.app/preview/${Date.now()}`
+                  ? deployUrl
+                  : 'Preview'}
+              </div>
             </div>
             <iframe
               className="done-preview-frame"
@@ -603,6 +731,140 @@ export default function App() {
           </div>
         </main>
       )}
+      {/* ═════════════════════════════════════════════════════════
+          RAG PANEL — 右侧滑出面板
+          ═════════════════════════════════════════════════════════ */}
+      {showRagPanel && (
+        <div className="side-panel-overlay" onClick={() => setShowRagPanel(false)}>
+          <div className="side-panel" onClick={e => e.stopPropagation()}>
+            <div className="side-panel-header">
+              <span className="side-panel-icon">📚</span>
+              <span className="side-panel-title">RAG — Component Suggestions</span>
+              <button className="side-panel-close" onClick={() => setShowRagPanel(false)}>×</button>
+            </div>
+            <div className="side-panel-body">
+              {ragPatterns.length > 0 && (
+                <div className="rag-section">
+                  <div className="rag-section-title">🗂 Matched Layout Patterns</div>
+                  {ragPatterns.map(({ pattern, score }) => (
+                    <div key={pattern.id} className="rag-pattern-card">
+                      <div className="rag-pattern-name">{pattern.name}</div>
+                      <div className="rag-pattern-desc">{pattern.description}</div>
+                      <div className="rag-pattern-score">Relevance: {(score * 100).toFixed(0)}%</div>
+                      <div className="rag-pattern-colors">
+                        <span style={{ background: pattern.colorScheme.primary }} className="rag-color-dot" />
+                        <span style={{ background: pattern.colorScheme.bg }} className="rag-color-dot" />
+                        <span className="rag-pattern-color-text">{pattern.colorScheme.primary}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {ragComponents.length > 0 && (
+                <div className="rag-section">
+                  <div className="rag-section-title">🧩 Recommended Components</div>
+                  {ragComponents.map(({ component, score }) => (
+                    <div key={component.id} className="rag-comp-card">
+                      <div className="rag-comp-header">
+                        <span className="rag-comp-type">[{component.blockType}]</span>
+                        <span className="rag-comp-name">{component.name}</span>
+                        <span className="rag-comp-score">{(score * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="rag-comp-desc">{component.description}</div>
+                      <div className="rag-comp-css">{component.cssHints}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════
+          DAG PANEL — 依赖关系图
+          ═════════════════════════════════════════════════════════ */}
+      {showDagPanel && dag && (
+        <div className="side-panel-overlay" onClick={() => setShowDagPanel(false)}>
+          <div className="side-panel side-panel--wide" onClick={e => e.stopPropagation()}>
+            <div className="side-panel-header">
+              <span className="side-panel-icon">◈</span>
+              <span className="side-panel-title">DAG — Workflow Dependencies</span>
+              <button className="side-panel-close" onClick={() => setShowDagPanel(false)}>×</button>
+            </div>
+            <div className="side-panel-body side-panel-body--fill">
+              <DAGViewer
+                dag={dag}
+                onNodeClick={(node) => {
+                  if (node.slideIndex !== null) {
+                    setActiveIdx(node.slideIndex);
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════
+          FLOWCO PANEL — 数据流分析
+          ═════════════════════════════════════════════════════════ */}
+      {showFlowPanel && flowReport && (
+        <div className="side-panel-overlay" onClick={() => setShowFlowPanel(false)}>
+          <div className="side-panel" onClick={e => e.stopPropagation()}>
+            <div className="side-panel-header">
+              <span className="side-panel-icon">🔬</span>
+              <span className="side-panel-title">Flowco — Data Flow Analysis</span>
+              <button className="side-panel-close" onClick={() => setShowFlowPanel(false)}>×</button>
+            </div>
+            <div className="side-panel-body">
+              {/* 摘要 */}
+              {(() => {
+                const fmt = formatFlowReport(flowReport);
+                return (
+                  <div className={`flow-summary flow-summary--${flowReport.status}`}>
+                    <span className="flow-summary-icon">{fmt.icon}</span>
+                    <div>
+                      <div className="flow-summary-status">{fmt.statusText}</div>
+                      <div className="flow-summary-counts">{fmt.summaryText}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Issue 列表 */}
+              {flowReport.issues.length === 0 ? (
+                <div className="flow-no-issues">✅ No issues found — your data flow looks clean!</div>
+              ) : (
+                <div className="flow-issues">
+                  {[VALIDATION_LEVEL.ERROR, VALIDATION_LEVEL.WARNING, VALIDATION_LEVEL.INFO].map(level => {
+                    const levelIssues = flowReport.issues.filter(i => i.level === level);
+                    if (levelIssues.length === 0) return null;
+                    const icons = { error: '❌', warning: '⚠️', info: '💡' };
+                    return (
+                      <div key={level} className="flow-issue-group">
+                        <div className={`flow-issue-group-title flow-issue-group-title--${level}`}>
+                          {icons[level]} {level.charAt(0).toUpperCase() + level.slice(1)}s ({levelIssues.length})
+                        </div>
+                        {levelIssues.map((issue, i) => (
+                          <div key={i} className={`flow-issue flow-issue--${issue.level}`}>
+                            <div className="flow-issue-code">{issue.code}</div>
+                            <div className="flow-issue-msg">{issue.message}</div>
+                            {issue.fix && (
+                              <div className="flow-issue-fix">💡 Fix: {issue.fix}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
