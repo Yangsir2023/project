@@ -320,15 +320,71 @@ export default function App() {
     }
   }, [slides, messages]);
 
-  /* ── Proposal → Edit ──────────────────────────────────────── */
+  /* ── Compile ALL slides in parallel (concurrency-controlled) ── */
+  const handleCompileAll = useCallback(async (indices) => {
+    const key = getApiKey();
+    if (!key || indices.length === 0) return;
+
+    const CONCURRENCY = 3; // Gemini Flash RPM ~15, safe concurrency
+    const total = indices.length;
+    let completed = 0;
+
+    setCompileLog(prev => [...prev, `🚀 Parallel compile started: ${total} slides, concurrency=${CONCURRENCY}`]);
+
+    // Mark all target slides as compiling
+    setSlides(prev => prev.map((s, i) =>
+      indices.includes(i) ? { ...s, status: 'compiling' } : s
+    ));
+
+    // Process in batches
+    for (let start = 0; start < total; start += CONCURRENCY) {
+      const batch = indices.slice(start, start + CONCURRENCY);
+      setCompileLog(prev => [...prev, `⚡ Batch ${Math.floor(start / CONCURRENCY) + 1}: compiling slides [${batch.map(i => i + 1).join(', ')}]…`]);
+
+      const results = await Promise.allSettled(
+        batch.map(idx => {
+          const slide = slides[idx];
+          if (!slide) return Promise.resolve({ idx, html: null, error: 'Slide not found' });
+          return compileSlideREST(key, slide, getPromptFromMessages(messages))
+            .then(html => ({ idx, html, error: null }))
+            .catch(err => ({ idx, html: null, error: err.message }));
+        })
+      );
+
+      // Update slides with results
+      const batchResults = results.map(r => r.status === 'fulfilled' ? r.value : { idx: -1, html: null, error: 'Promise rejected' });
+      setSlides(prev => prev.map((s, i) => {
+        const r = batchResults.find(br => br.idx === i);
+        if (!r) return s;
+        if (r.error) return { ...s, status: 'error', error: r.error };
+        completed++;
+        setCompileLog(prev => [...prev.filter(l => !l.includes('✅') || !l.includes(`Slide ${i + 1}`)), `✅ Slide ${i + 1} compiled (${completed}/${total})`]);
+        return { ...s, status: 'compiled', html: r.html };
+      }));
+    }
+
+    setCompileLog(prev => [...prev, `🎉 All ${total} slides compiled in parallel!`]);
+  }, [slides, messages]);
+
+  /* ── Proposal → Edit (with auto parallel compile) ─────────── */
   const handleProceedToEdit = useCallback(() => {
     setPhaseState(PHASE.COMPILING);
-    setCompileLog(prev => [...prev, '🎨 Entering visual editor…']);
+    setCompileLog(prev => [...prev, '🎨 Entering visual editor, starting parallel compile…']);
+
+    // Auto-trigger parallel compile for all skeleton slides
+    const toCompile = slides
+      .map((s, i) => s.status === 'skeleton' ? i : -1)
+      .filter(i => i >= 0);
+
+    if (toCompile.length > 0) {
+      handleCompileAll(toCompile);
+    }
+
     setTimeout(() => {
       setPhaseState(PHASE.EDIT);
       setActiveIdx(0);
     }, 600);
-  }, []);
+  }, [slides, handleCompileAll]);
 
   /* ── Deploy ─────────────────────────────────────────────────── */
   const handleDeploy = useCallback(async () => {
