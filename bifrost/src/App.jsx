@@ -6,7 +6,59 @@ import ProposalViewer from './proposal/ProposalViewer.jsx';
 import DAGViewer from './dag/DAGViewer.jsx';
 import DeployPanel from './deploy/DeployPanel.jsx';
 import { generateSkeleton, compileSlide, generateFinalCode } from './engine/aiEngine.js';
-import { augmentPromptWithRAG, getRecommendedComponents, getRecommendedPatterns } from './rag/ragEngine.js';
+import { augmentPromptWithRAG, getRecommendedComponents, getRecommendedPatterns, getRAGKnowledgeText } from './rag/ragEngine.js';
+
+/* ─── System Instruction 常量（供 Context Caching 复用） ─── */
+const SYSTEM_INSTRUCTION_SKELETON = `You are a professional website architect and UI designer.
+The user describes the website they want, and you need to break it down into multiple "slides" (page sections), each representing a distinct area of the website (e.g., navbar, Hero section, feature showcase, pricing, footer, etc.).
+
+Each slide contains several "Visual Block" elements with position and size information (relative to a 1000×600 canvas).
+
+Available block types:
+- heading: Title text (content: {text, level: "h1"|"h2"|"h3", align: "left"|"center"|"right"})
+- text: Paragraph text (content: {text, align: "left"|"center"|"right"})
+- image: Image placeholder (content: {src: "", alt, fit: "cover"|"contain"})
+- button: Button (content: {text, variant: "primary"|"secondary"|"ghost"|"danger", href: "#"})
+- card: Card (content: {title, body, hasImage: true|false})
+- list: List (content: {items: ["...","..."], style: "bullet"|"number"})
+- hero: Hero section (content: {title, sub, cta})
+- nav: Navbar (content: {logo, links: ["Home","Features"], cta})
+- badge: Badge/tag (content: {text, color: "#6366f1"})
+- divider: Divider (content: {style: "line"})
+
+Important rules:
+1. Reasonably distribute positions: x,y,w,h are pixel values, canvas size 1000×600, avoid severe overlap
+2. Each slide has 3-8 blocks, carefully laid out, representing real website areas
+3. Generate 3-6 slides covering the complete website structure
+4. bgColor uses dark colors (e.g., #0f172a, #1e293b) or choose according to style
+5. Text content should be meaningful and match user needs.
+
+Return format (pure JSON, no markdown):
+[
+  {
+    "name": "Navbar + Hero",
+    "bgColor": "#0f172a",
+    "blocks": [
+      {"type": "nav",     "x": 0,    "y": 0,   "w": 1000, "h": 60,  "zIndex": 1, "content": {"logo": "Brand", "links": ["Home","Features","Pricing"], "cta": "Get Started"}},
+      {"type": "hero",    "x": 100,  "y": 100, "w": 800,  "h": 200, "zIndex": 1, "content": {"title": "Big Title", "sub": "Subtitle", "cta": "Try Now"}}
+    ]
+  }
+]`;
+
+const SYSTEM_INSTRUCTION_COMPILE = `You are a professional front-end developer.
+Compile the visual blocks of a slide into a real, runnable HTML page.
+Requirements:
+1. Output complete HTML (with <html><head><body> tags)
+2. Use inline <style> for all CSS, no external resources
+3. Strictly restore block positions and sizes (canvas 1000×600, convert to percentage layout)
+4. Light theme, clean and professional, suitable for academic screenshots
+5. Font: system-ui, sans-serif
+6. Buttons and cards should have hover effects
+7. Clean code, directly runnable in browser
+8. No comments, no markdown, output HTML only`;
+
+const SYSTEM_INSTRUCTION_FINAL = `Merge multiple HTML fragments into one complete, professional single-page website.
+Requirements: 1) Output complete HTML document 2) Integrate all styles, resolve conflicts 3) Natural transitions between sections 4) Smooth scrolling 5) Responsive design 6) Unified light theme, clean and professional 7) High code quality, deployable 8) Output HTML only, no markdown, no comments`;
 import { buildDAGFromSlides, getDAGStats } from './dag/dagEngine.js';
 import { analyzeFlow, formatFlowReport, FLOW_STATUS, VALIDATION_LEVEL } from './flowco/flowcoEngine.js';
 import { DEPLOY_TARGET, DEPLOY_STATUS } from './deploy/deployService.js';
@@ -100,6 +152,15 @@ export default function App() {
   // ── Deploy state ───────────────────────────────────────
   const [showDeployPanel, setShowDeployPanel] = useState(false);
   const [isDeployingReal, setIsDeployingReal] = useState(false);
+
+  // ── Context Cache state (Gemini Caching API) ─────────
+  const [cachedContentName, setCachedContentName] = useState(
+    () => localStorage.getItem('bifrost_cache_name') || null
+  );
+  const [cacheExpiry, setCacheExpiry] = useState(
+    () => parseInt(localStorage.getItem('bifrost_cache_expiry')) || 0
+  );
+  const cacheEnsuring = useRef(false);
 
   const chatEndRef  = useRef(null);
   const inputRef    = useRef(null);
