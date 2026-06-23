@@ -3047,5 +3047,13 @@ body {
 
   /* ── General: softer scroll ──────────────────────────────── */
   html, body, #root { overflow: auto; }
-  .app { height: auto; min-height: 100vh; min-height: 100dvh; }
+  .app { height: auto; min-height: 100vh; min-height: 100dvh; overflow: auto !important; }
+  /* ── Smooth touch scroll for iOS ──────────────────────────── */
+  .chat-messages,
+  .chat-info,
+  .chat-panel,
+  .chat-stage,
+  .chat-layout { overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+  /* ── Prevent horizontal overflow ──────────────────────────── */
+  body { overflow-x: hidden; width: 100vw; }
 }
