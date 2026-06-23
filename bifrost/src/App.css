@@ -2971,3 +2971,82 @@ body {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE (≤768px)
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* ── Topbar: compact ─────────────────────────────────────── */
+  .topbar { padding: 0 10px; gap: 8px; height: 44px; }
+  .topbar-logo-name { font-size: 13px; }
+  .topbar-logo-tag { display: none; }
+  .phase-step-label { display: none; }
+  .phase-connector { width: 14px; margin: 0 2px; }
+  .phase-stepper { gap: 0; }
+  .topbar-btn { font-size: 10px; padding: 4px 8px; }
+
+  /* ── Chat stage: stack ──────────────────────────────────── */
+  .chat-layout { flex-direction: column; }
+  .chat-panel { width: 100%; min-width: 0; max-height: 55vh; }
+  .chat-panel-header { padding: 10px 12px; }
+  .chat-messages { padding: 10px 12px; }
+  .chat-input-bar { padding: 8px 12px; }
+  .chat-info { padding: 24px 16px; gap: 20px; overflow-y: auto; }
+  .chat-info-title { font-size: 22px; }
+  .chat-info-sub { font-size: 13px; max-width: 100%; }
+  .chat-features { grid-template-columns: 1fr; }
+
+  /* ── Proposal stage: hide rail, stack dialog below ──────── */
+  .pv-rail { display: none; }
+  .pv-root { flex-direction: column; }
+  .pv-canvas { flex: 0 1 auto; min-height: 40vh; }
+  .pv-canvas-header { padding: 0 12px; height: 40px; }
+  .pv-canvas-slide-name { font-size: 12px; }
+  .pv-canvas-stage { padding: 8px; overflow: auto; }
+  .pv-stage-bg { width: 100%; height: auto; aspect-ratio: 16 / 9; max-height: 50vh; }
+  .pv-dialog { width: 100%; min-width: 0; flex: 1; }
+  .pv-dialog-messages { max-height: 30vh; }
+  .pv-dialog-header { padding: 10px 12px 8px; }
+  .pv-canvas-actions { padding: 0 10px; height: 42px; }
+  .pv-nav-btn { font-size: 11px; padding: 4px 10px; }
+  .pv-action-btn { font-size: 11px; padding: 4px 10px; }
+  .pv-action-btn--primary { padding: 4px 14px; }
+
+  /* ── Visual Editor: hide rail, stack right panel below ──── */
+  .ve-rail { display: none; }
+  .ve-root { flex-direction: column; }
+  .ve-canvas-wrap { min-height: 45vh; }
+  .ve-canvas-toolbar { padding: 0 10px; height: 36px; gap: 8px; }
+  .ve-canvas-slide-name { font-size: 11px; }
+  .ve-canvas-hint { display: none; }
+  .ve-stage-wrap { padding: 8px; }
+  .ve-stage { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .ve-right-panel { width: 100%; min-width: 0; max-height: 45vh; }
+  .ve-right-tab { font-size: 11px; padding: 7px 4px; }
+  /* Canvas blocks: scale down typetags */
+  .canvas-block-typetag { font-size: 9px; }
+
+  /* ── Done stage: stack ──────────────────────────────────── */
+  .done-stage { flex-direction: column; }
+  .done-left { width: 100%; min-width: 0; padding: 20px 16px; gap: 14px; }
+  .done-title { font-size: 18px; }
+  .done-left .done-actions { margin-top: 0; }
+  .done-right { min-height: 50vh; }
+  .done-preview-bar { padding: 6px 10px; height: 32px; }
+  .done-preview-url { font-size: 10px; }
+
+  /* ── Side panels: full width ────────────────────────────── */
+  .side-panel { width: 100%; max-width: 100vw; }
+  .side-panel--wide { width: 100%; }
+
+  /* ── Compile stage ───────────────────────────────────────── */
+  .compile-log { width: 90%; max-width: 90vw; }
+  .compile-title { font-size: 16px; }
+
+  /* ── API modal ───────────────────────────────────────────── */
+  .api-modal { width: 90vw; max-width: 90vw; padding: 20px; }
+
+  /* ── General: softer scroll ──────────────────────────────── */
+  html, body, #root { overflow: auto; }
+  .app { height: auto; min-height: 100vh; min-height: 100dvh; }
+}
