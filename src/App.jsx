@@ -130,6 +130,17 @@ export default function App() {
   const [userIntent, setUserIntent]   = useState('');
   const [sessionStart, setSessionStart] = useState(Date.now());
   const [timing, setTiming] = useState({ generate: 0, compile: 0, total: 0 });
+  const [guidanceText, setGuidanceText] = useState('');
+
+  /* ── Guidance template shown when user picks a demo prompt ── */
+  const GUIDANCE = `📋 **Before you send, consider adding:**
+
+• **Visual style** — minimalist / bold / playful / corporate?
+• **Color preference** — dark mode / light / specific palette?
+• **Key sections** — hero, features, pricing, testimonials, FAQ…?
+• **Special features** — animations, carousel, contact form, blog?
+
+You can send as-is and I'll ask follow-up questions, or include details now for a better first draft.`;
 
   /* ── LandingPage → 进入 Chat ─────────────────────────── */
   const handleGetStarted = useCallback(() => {
@@ -212,6 +223,7 @@ export default function App() {
     const userMsg = { role: 'user', text: inputText.trim() };
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
+    setGuidanceText('');
     setIsTyping(true);
     setError('');
 
@@ -696,6 +708,13 @@ export default function App() {
                 <div ref={chatEndRef} />
               </div>
 
+              {guidanceText && (
+                <div className="chat-guidance">
+                  <div className="chat-guidance-text">{guidanceText}</div>
+                  <button className="chat-guidance-dismiss" onClick={() => setGuidanceText('')}>✕</button>
+                </div>
+              )}
+
               <div className="chat-input-bar">
                 <textarea
                   ref={inputRef}
@@ -733,7 +752,7 @@ export default function App() {
                   <button
                     key={i}
                     className="chat-demo-chip"
-                    onClick={() => setInputText(p)}
+                    onClick={() => { setInputText(p); setGuidanceText(GUIDANCE); }}
                   >
                     {p}
                   </button>

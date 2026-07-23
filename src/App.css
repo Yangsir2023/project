@@ -401,6 +401,45 @@ body {
   40% { opacity: 1; transform: translateY(-4px); }
 }
 
+/* Chat Guidance (shown when user picks a demo prompt) */
+.chat-guidance {
+  margin: 0 12px 8px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #f0f7ff 0%, #eef2ff 100%);
+  border: 1px solid #c7d2fe;
+  border-left: 3px solid #6366f1;
+  border-radius: 8px;
+  position: relative;
+  animation: guidanceFadeIn 0.25s ease-out;
+}
+.chat-guidance-text {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #374151;
+  white-space: pre-line;
+}
+.chat-guidance-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.chat-guidance-dismiss:hover {
+  color: #6b7280;
+  background: rgba(0,0,0,0.06);
+}
+@keyframes guidanceFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Chat Input Bar */
 .chat-input-bar {
   display: flex;
