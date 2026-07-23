@@ -100,6 +100,7 @@
 
 /* ── Section ③: Five Interventions ─────────────── */
 .lp-s3{padding-top:60px;padding-bottom:60px}
+
 .lp-interventions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
 .lp-intervention-card{background:rgba(30,41,59,.55);border:1px solid rgba(99,102,241,.12);border-radius:16px;padding:24px;transition:all .3s ease;position:relative;overflow:hidden}
 .lp-intervention-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#6366f1,#8b5cf6);opacity:0;transition:opacity .3s}

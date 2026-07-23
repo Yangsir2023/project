@@ -142,7 +142,7 @@ export default function LandingPage({ onEnter }) {
                 <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-            <div className="lp-hero-hint">n = 24 &middot; between-subjects &middot; t(22) = 3.74, p &lt; .001</div>
+            <div className="lp-hero-hint">Research Prototype — MSc Dissertation Project</div>
           </div>
         </section>
 
@@ -241,9 +241,7 @@ export default function LandingPage({ onEnter }) {
             <span className="lp-section-tag lp-section-tag--num">③ INTERVENTIONS</span>
             <h2 className="lp-section-title">Five Control Mechanisms</h2>
             <p className="lp-section-sub">
-              These are not product features — they are the <b>experimental operationalization</b> of control authority.<br />
-              A between-subjects user study (n=24) tested whether these mechanisms <b>increase trust in AI-generated output</b>.<br />
-              Result: <b>t(22)=3.74, p&lt;.001, d=1.53</b> — a large effect size (Bifrost M=5.75 vs baseline M=4.00).
+              These are not product features — they are how Bifrost keeps the <b>human in control</b> at every stage of AI generation.
             </p>
           </div>
 
@@ -262,8 +260,7 @@ export default function LandingPage({ onEnter }) {
           </div>
 
           <div className="lp-s3-note">
-            🔵 <b>Why it matters:</b> these five mechanisms are how users keep control.
-            In the study, having them significantly increased trust (<b>t(22)=3.74, p&lt;.001, d=1.53</b>).
+            🔵 <b>Core idea:</b> the system proposes, but the human decides — at proposal, edit, and every step in between.
           </div>
         </section>
 
