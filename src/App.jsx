@@ -6,7 +6,8 @@ import ProposalViewer from './proposal/ProposalViewer.jsx';
 import DAGViewer from './dag/DAGViewer.jsx';
 import DeployPanel from './deploy/DeployPanel.jsx';
 import { generateSkeleton, compileSlide, generateFinalCode } from './engine/aiEngine.js';
-import { augmentPromptWithRAG, getRecommendedComponents, getRecommendedPatterns, getRAGKnowledgeText } from './rag/ragEngine.js';
+import { ragEngine, augmentPromptWithRAG, getRecommendedComponents, getRecommendedPatterns, getRAGKnowledgeText } from './rag/ragEngine.js';
+import { judgeVisual } from './judge/judgeAgent.js';
 
 /* ─── System Instruction 常量（供 Context Caching 复用） ─── */
 const SYSTEM_INSTRUCTION_SKELETON = `You are a professional website architect and UI designer.
@@ -51,14 +52,15 @@ Requirements:
 1. Output complete HTML (with <html><head><body> tags)
 2. Use inline <style> for all CSS, no external resources
 3. Strictly restore block positions and sizes (canvas 1000×600, convert to percentage layout)
-4. Light theme, clean and professional, suitable for academic screenshots
+4. Match the slide background colour; use dark text on light / light text on dark for contrast
 5. Font: system-ui, sans-serif
-6. Buttons and cards should have hover effects
-7. Clean code, directly runnable in browser
-8. No comments, no markdown, output HTML only`;
+6. Buttons and cards should have hover effects with appropriate contrast colours
+7. Images: if no valid src, use a solid-colour placeholder div instead of broken <img>
+8. Clean code, directly runnable in browser
+9. No comments, no markdown, output HTML only`;
 
 const SYSTEM_INSTRUCTION_FINAL = `Merge multiple HTML fragments into one complete, professional single-page website.
-Requirements: 1) Output complete HTML document 2) Integrate all styles, resolve conflicts 3) Natural transitions between sections 4) Smooth scrolling 5) Responsive design 6) Unified light theme, clean and professional 7) High code quality, deployable 8) Output HTML only, no markdown, no comments`;
+Requirements: 1) Output complete HTML document 2) Integrate all styles, resolve conflicts 3) Natural transitions between sections 4) Smooth scrolling 5) Responsive design 6) Unified theme matching section backgrounds (dark/light) 7) Preserve data: URIs and https image sources 8) High code quality, deployable 9) Output HTML only, no markdown, no comments`;
 import { buildDAGFromSlides, getDAGStats } from './dag/dagEngine.js';
 import { analyzeFlow, formatFlowReport, FLOW_STATUS, VALIDATION_LEVEL } from './flowco/flowcoEngine.js';
 import { DEPLOY_TARGET, DEPLOY_STATUS } from './deploy/deployService.js';
@@ -126,6 +128,8 @@ export default function App() {
   const [compileLog, setCompileLog] = useState([]);
   const [deployUrl, setDeployUrl]   = useState('');
   const [userIntent, setUserIntent]   = useState('');
+  const [sessionStart, setSessionStart] = useState(Date.now());
+  const [timing, setTiming] = useState({ generate: 0, compile: 0, total: 0 });
 
   /* ── LandingPage → 进入 Chat ─────────────────────────── */
   const handleGetStarted = useCallback(() => {
@@ -277,6 +281,18 @@ export default function App() {
     try {
       const log = (msg) => setCompileLog(prev => [...prev, msg]);
 
+      // ── Hybrid RAG warm-up (idempotent; non-fatal) ────────
+      const key = getApiKey();
+      if (key) {
+        try {
+          await ragEngine.warmup({ apiKey: key });
+          await ragEngine.embedQuery(promptToUse, { apiKey: key });
+          log('🧠 Hybrid RAG ready (Dense + BM25 + RRF k=60)');
+        } catch (e) {
+          console.warn('[RAG] hybrid warm-up skipped:', e && e.message);
+        }
+      }
+
       // ── Stage 0: RAG 检索增强 ──────────────────────────────
       log('🔍 Analysing intent…');
       log('📚 Retrieving relevant components from knowledge base (RAG)…');
@@ -296,7 +312,6 @@ export default function App() {
       const augmentedPrompt = augmentPromptWithRAG(promptToUse);
       log('📐 Generating PPT proposal slides with RAG context…');
 
-      const key = getApiKey();
       let rawSlides;
 
       if (key) {
@@ -351,33 +366,46 @@ export default function App() {
     setDag(newDag);
   }, [userIntent]);
 
-  /* ── Compile single slide ──────────────────────────────────── */
+  /* ── Compile single slide (with retry) ───────────────────── */
   const handleCompileSlide = useCallback(async (idx) => {
     const slide = slides[idx];
     if (!slide) return;
     setError('');
     const key = getApiKey();
+    const MAX_RETRIES = 2;
 
     setSlides(prev => prev.map((s, i) =>
-      i === idx ? { ...s, status: 'compiling' } : s
+      i === idx ? { ...s, status: 'compiling', error: undefined } : s
     ));
 
-    try {
-      let html;
-      if (key) {
-        html = await compileSlideREST(key, slide, getPromptFromMessages(messages));
-      } else {
-        await delay(1000);
-        html = generateDemoHtml(slide);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        let html;
+        if (key) {
+          html = await compileSlideREST(key, slide, getPromptFromMessages(messages));
+        } else {
+          await delay(1000);
+          html = generateDemoHtml(slide);
+        }
+        // Validate HTML is non-trivial
+        if (!html || html.length < 50) throw new Error('AI returned empty or incomplete HTML');
+        setSlides(prev => prev.map((s, i) =>
+          i === idx ? { ...s, status: 'compiled', html, error: undefined } : s
+        ));
+        return; // success — exit retry loop
+      } catch (err) {
+        const isLast = attempt === MAX_RETRIES;
+        if (!isLast && key) {
+          // Exponential backoff before retry: 1s, 2s
+          await delay(1000 * Math.pow(2, attempt));
+          continue;
+        }
+        // All retries exhausted or no API key
+        setSlides(prev => prev.map((s, i) =>
+          i === idx ? { ...s, status: 'error', error: err.message || 'Compilation failed' } : s
+        ));
+        setError(`Slide "${slide.name}" compile failed${MAX_RETRIES > 0 ? ` after ${MAX_RETRIES + 1} attempts` : ''}: ${err.message}`);
       }
-      setSlides(prev => prev.map((s, i) =>
-        i === idx ? { ...s, status: 'compiled', html } : s
-      ));
-    } catch (err) {
-      setSlides(prev => prev.map((s, i) =>
-        i === idx ? { ...s, status: 'error', error: err.message } : s
-      ));
-      setError(`Compile failed: ${err.message}`);
     }
   }, [slides, messages]);
 
@@ -462,6 +490,15 @@ export default function App() {
       }
       setFinalHtml(html);
       setDeployUrl(`https://bifrost.app/preview/${Date.now()}`);
+
+      // ── VLM Judge: dual-track evaluation (off unless opted in) ──
+      if (key && localStorage.getItem('bifrost_judge') === '1') {
+        judgeVisual(null, html, {
+          apiKey: key,
+          meta: { phase: 'done', prompt: getPromptFromMessages(messages), slideCount: slides.length },
+        }).catch(e => console.warn('[Judge] evaluation skipped:', e && e.message));
+      }
+
       setPhaseState(PHASE.DONE);
     } catch (err) {
       setError(err.message || 'Deployment failed');
@@ -794,11 +831,16 @@ export default function App() {
             <h2 className="done-title">Your website is ready to deploy</h2>
 
             <div className="done-stats">
-              {[
-                { label: 'Slides', value: slides.length },
-                { label: 'Lines of code', value: `~${Math.round(finalHtml.length / 50)}` },
-                { label: 'Time taken', value: '< 1 min' },
-              ].map(({ label, value }) => (
+              {(() => {
+                const elapsedSec = Math.round((Date.now() - sessionStart) / 1000);
+                const timeStr = elapsedSec < 60 ? `${elapsedSec}s` : `${Math.round(elapsedSec/60)}m ${elapsedSec%60}s`;
+                return [
+                  { label: 'Slides', value: slides.length },
+                  { label: 'Lines of code', value: `~${(finalHtml.length > 0 ? Math.round(finalHtml.length / 50) : 0)}` },
+                  { label: 'Time taken', value: timeStr },
+                  { label: 'API calls', value: compileLog.length },
+                ];
+              })().map(({ label, value }) => (
                 <div key={label} className="done-stat">
                   <div className="done-stat-value">{value}</div>
                   <div className="done-stat-label">{label}</div>
@@ -856,7 +898,7 @@ export default function App() {
               className="done-preview-frame"
               srcDoc={finalHtml}
               title="Preview"
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-same-origin allow-popups"
             />
           </div>
         </main>
@@ -1087,11 +1129,74 @@ Return format (pure JSON, no markdown):
   }));
 }
 
+/**
+ * Guarantee real user images survive compilation.
+ * The AI may truncate or mangle a huge base64 data: URI; we always restore the
+ * exact src stored on the block for any <img data-slot="ID"> it rendered.
+ * Order-independent (handles src before/after data-slot).
+ */
+function injectImagesIntoHtml(html, slide) {
+  if (!html) return html;
+  (slide.blocks || []).forEach(b => {
+    let src = null;
+    if (b.type === 'image' && b.content?.src) src = b.content.src;
+    else if (b.type === 'card' && b.content?.hasImage && b.content?.imageSrc) src = b.content.imageSrc;
+    if (!src) return;
+    const slot = b.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tagRe = new RegExp(`<img\\b[^>]*\\bdata-slot="${slot}"[^>]*>`, 'i');
+    const tagMatch = html.match(tagRe);
+    if (tagMatch) {
+      const oldTag = tagMatch[0];
+      const newTag = /\ssrc="/i.test(oldTag)
+        ? oldTag.replace(/\ssrc="[^"]*"/i, ` src="${src}"`)
+        : oldTag.replace(/\s*\/?>$/, ` src="${src}">`);
+      html = html.replace(oldTag, newTag);
+    } else {
+      // AI dropped the marker entirely — inject a fresh image right after <body>
+      html = html.replace(/(<body[^>]*>)/i, `$1<img class="bf-img" data-slot="${b.id}" src="${src}" style="max-width:100%">`);
+    }
+  });
+  return html;
+}
+
+/** Same guarantee for the final merged site (Bug 7: deploy images). */
+function injectImagesIntoFinalHtml(html, slides) {
+  if (!html) return html;
+  slides.forEach(s => {
+    (s.blocks || []).forEach(b => {
+      let src = null;
+      if (b.type === 'image' && b.content?.src) src = b.content.src;
+      else if (b.type === 'card' && b.content?.hasImage && b.content?.imageSrc) src = b.content.imageSrc;
+      if (!src) return;
+      const slot = b.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const tagRe = new RegExp(`<img\\b[^>]*\\bdata-slot="${slot}"[^>]*>`, 'i');
+      const tagMatch = html.match(tagRe);
+      if (tagMatch) {
+        const oldTag = tagMatch[0];
+        const newTag = /\ssrc="/i.test(oldTag)
+          ? oldTag.replace(/\ssrc="[^"]*"/i, ` src="${src}"`)
+          : oldTag.replace(/\s*\/?>$/, ` src="${src}">`);
+        html = html.replace(oldTag, newTag);
+      }
+    });
+  });
+  return html;
+}
+
 async function compileSlideREST(apiKey, slide, sitePrompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  const blockSummary = (slide.blocks || []).map(b =>
-    `[${b.type}] "${JSON.stringify(b.content).slice(0, 60)}" at (${b.x},${b.y}) ${b.w}×${b.h}`
-  ).join('\n');
+  const bg = slide.bgColor || '#f8fafc';
+  const isDark = isDarkColor(bg);
+  const textColor = isDark ? '#f8fafc' : '#1e293b';
+  const blockSummary = (slide.blocks || []).map(b => {
+    if (b.type === 'image' && b.content?.src) {
+      return `[image] at (${b.x},${b.y}) ${b.w}×${b.h} -- RENDER AS <img class="bf-img" data-slot="${b.id}" src="${b.content.src}" alt="${b.content.alt || ''}" style="object-fit:${b.content.fit || 'cover'}">`;
+    }
+    if (b.type === 'card' && b.content?.hasImage && b.content?.imageSrc) {
+      return `[card has image] at (${b.x},${b.y}) ${b.w}×${b.h} -- card image RENDER AS <img class="bf-img" data-slot="${b.id}" src="${b.content.imageSrc}">`;
+    }
+    return `[${b.type}] "${JSON.stringify(b.content).slice(0, 80)}" at (${b.x},${b.y}) ${b.w}×${b.h}`;
+  }).join('\n');
 
   const payload = {
     systemInstruction: { parts: [{ text: `You are a professional front-end developer.
@@ -1100,12 +1205,14 @@ Requirements:
 1. Output complete HTML (with <html><head><body> tags)
 2. Use inline <style> for all CSS, no external resources
 3. Strictly restore block positions and sizes (canvas 1000×600, convert to percentage layout)
-4. Light theme, clean and professional, suitable for academic screenshots
+4. Background color MUST be exactly ${bg}. Use ${isDark ? 'dark' : 'light'} theme with ${textColor} text color for contrast.
 5. Font: system-ui, sans-serif
-6. Buttons and cards should have hover effects
-7. Clean code, directly runnable in browser
-8. No comments, no markdown, output HTML only` }] },
-    contents: [{ role: 'user', parts: [{ text: `Site context: ${sitePrompt}\n\nSlide name: ${slide.name}\nBackground: ${slide.bgColor}\n\nBlocks:\n${blockSummary}\n\nPlease compile these blocks into a complete HTML page.` }] }],
+6. Buttons and cards should have hover effects with appropriate colors for the ${isDark ? 'dark' : 'light'} background
+7. Images: if an image block has no valid src URL, use a solid-color placeholder div matching the block dimensions instead of a broken <img> tag.
+8. Clean code, directly runnable in browser
+9. No comments, no markdown, output HTML only
+10. CRITICAL for images: for every [image] / [card has image] block, output its <img> with the EXACT attribute data-slot="BLOCKID" (use the id shown) and the EXACT src value given (a data: URI or https URL). Never shorten, crop, or replace data: URIs — copy them character-for-character.` }] },
+    contents: [{ role: 'user', parts: [{ text: `Site context: ${sitePrompt}\n\nSlide name: ${slide.name}\nBackground color (MUST use this exact value): ${bg}\nTheme: ${isDark ? 'DARK — use light text on dark background' : 'LIGHT — use dark text on light background'}\n\nBlocks:\n${blockSummary}\n\nPlease compile these blocks into a complete HTML page with the exact background color ${bg}.` }] }],
     generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
   };
 
@@ -1119,9 +1226,28 @@ Requirements:
   let html = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   html = html.replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/, '');
   if (!html.includes('<html')) {
-    html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;background:#f8fafc;color:#1e293b;font-family:system-ui,sans-serif}</style></head><body>${html}</body></html>`;
+    html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;background:${bg};color:${textColor};font-family:system-ui,sans-serif}</style></head><body>${html}</body></html>`;
   }
+  // Safety net: ensure body background matches slide's bgColor
+  html = html.replace(/(<body[^>]*style=["'][^"]*?)background:\s*[^;"]+/gi, `$1background:${bg}`);
+  if (!/<style[\s>]/i.test(html) || html.length < 200) {
+    // AI returned very little or no styles — inject minimal usable styles
+    html = html.replace('</head>', `<style>*{box-sizing:border-box}body{margin:0;background:${bg};color:${textColor};font-family:system-ui,sans-serif;padding:20px}img{max-width:100%;height:auto}</style></head>`);
+  }
+  // Guarantee real user images survive even if the AI truncated/omitted the src
+  html = injectImagesIntoHtml(html, slide);
   return html;
+}
+
+/** Simple dark colour detector */
+function isDarkColor(hex) {
+  if (!hex || hex.length < 4) return false;
+  let c = hex.replace('#', '');
+  if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+  const r = parseInt(c.slice(0,2),16), g = parseInt(c.slice(2,4),16), b = parseInt(c.slice(4,6),16);
+  if (isNaN(r)||isNaN(g)||isNaN(b)) return false;
+  const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+  return lum < 0.5;
 }
 
 async function generateFinalCodeREST(apiKey, slides, sitePrompt) {
@@ -1129,6 +1255,8 @@ async function generateFinalCodeREST(apiKey, slides, sitePrompt) {
   if (compiledSlides.length === 0) {
     return generateFromBlocksREST(apiKey, slides, sitePrompt);
   }
+  // Detect dominant theme from slides
+  const hasDark = slides.some(s => isDarkColor(s.bgColor));
   const sections = compiledSlides.map(s => {
     const m = s.html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     return { name: s.name, body: m ? m[1] : s.html };
@@ -1137,9 +1265,18 @@ async function generateFinalCodeREST(apiKey, slides, sitePrompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   const payload = {
     systemInstruction: { parts: [{ text: `Merge multiple HTML fragments into one complete, professional single-page website.
-Requirements: 1) Output complete HTML document 2) Integrate all styles, resolve conflicts 3) Natural transitions between sections 4) Smooth scrolling 5) Responsive design 6) Unified light theme, clean and professional 7) High code quality, deployable 8) Output HTML only, no markdown, no comments` }] },
-    contents: [{ role: 'user', parts: [{ text: `Site: ${sitePrompt}\n\nMerge these ${sections.length} sections into one HTML:\n${sections.map((s, i) => `--- Section ${i+1}: ${s.name} ---\n${s.body.slice(0, 800)}...`).join('\n')}\n\nOutput the complete merged HTML.` }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 16384 },
+Requirements:
+1) Output complete HTML document
+2) Integrate all styles, resolve conflicts
+3) Natural transitions between sections
+4) Smooth scrolling
+5) Responsive design
+6) Unified ${hasDark ? 'dark' : 'light'} theme matching section backgrounds, clean and professional
+7) High code quality, deployable
+8) Images: every <img> that has a data-slot="BLOCKID" attribute must keep its EXACT src (a data: URI or https URL) character-for-character. Never shorten or replace data: URIs. Any <img> whose src is missing should be dropped, not left broken.
+9) Output HTML only, no markdown, no comments` }] },
+    contents: [{ role: 'user', parts: [{ text: `Site: ${sitePrompt}\n\nMerge these ${sections.length} sections into one HTML:\n${sections.map((s, i) => `--- Section ${i+1}: ${s.name} ---\n${s.body}`).join('\n')}\n\nOutput the complete merged HTML. Preserve every data-slot attribute and its src exactly.` }] }],
+    generationConfig: { temperature: 0.3, maxOutputTokens: 32768 },
   };
 
   const resp = await fetch(url, {
@@ -1151,6 +1288,7 @@ Requirements: 1) Output complete HTML document 2) Integrate all styles, resolve 
   const data = await resp.json();
   let html = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   html = html.replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/, '');
+  html = injectImagesIntoFinalHtml(html, slides);
   return html;
 }
 
@@ -1161,7 +1299,7 @@ async function generateFromBlocksREST(apiKey, slides, sitePrompt) {
   ).join('\n');
 
   const payload = {
-    contents: [{ role: 'user', parts: [{ text: `Requirement: ${sitePrompt}\n\nSite structure (${slides.length} sections):\n${summary}\n\nPlease generate a complete single-page website HTML (with <html><head><body>), inline all CSS, light theme, clean and professional visual design. Output HTML only.` }] }],
+    contents: [{ role: 'user', parts: [{ text: `Requirement: ${sitePrompt}\n\nSite structure (${slides.length} sections):\n${summary}\n\nPlease generate a complete single-page website HTML (with <html><head><body>), inline all CSS, use appropriate theme matching section backgrounds, clean and professional visual design. Output HTML only.` }] }],
     generationConfig: { temperature: 0.4, maxOutputTokens: 16384 },
   };
 

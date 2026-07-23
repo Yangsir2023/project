@@ -28,7 +28,7 @@ const SNAP = 8;
 function snap(v) { return Math.round(v / SNAP) * SNAP; }
 
 /* ─── Draggable Block Preview ────────────────────────────── */
-function DraggableBlock({ block, index, isSelected, onSelect, onChange }) {
+function DraggableBlock({ block, index, isSelected, onSelect, onChange, onDelete }) {
   const dragRef = useRef(null);
   const resizeRef = useRef(null);
 
@@ -146,6 +146,21 @@ function DraggableBlock({ block, index, isSelected, onSelect, onChange }) {
           onMouseDown={handleResizeMouseDown}
         />
       )}
+      {/* Delete button */}
+      {isSelected && onDelete && (
+        <button
+          style={{
+            position: 'absolute', top: -8, right: -8,
+            width: 20, height: 20, borderRadius: '50%',
+            background: '#ef4444', color: 'white', border: '2px solid white',
+            fontSize: 12, lineHeight: '14px', cursor: 'pointer',
+            zIndex: 21, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0,
+          }}
+          onMouseDown={e => { e.stopPropagation(); onDelete(index); }}
+          title="Remove this block"
+        >×</button>
+      )}
     </div>
   );
 }
@@ -238,6 +253,15 @@ export default function ProposalViewer({ slides, userIntent, apiKey, onSlidesCha
         ...s,
         blocks: s.blocks.map((b, j) => j === blockIdx ? { ...b, ...patch } : b),
       };
+    }));
+  }, [activeIdx, onSlidesChange]);
+
+  /* Handle block delete in proposal canvas */
+  const handleBlockDelete = useCallback((blockIdx) => {
+    setSelectedBlockIdx(null);
+    onSlidesChange(prev => prev.map((s, i) => {
+      if (i !== activeIdx) return s;
+      return { ...s, blocks: s.blocks.filter((_, j) => j !== blockIdx) };
     }));
   }, [activeIdx, onSlidesChange]);
 
@@ -385,6 +409,7 @@ export default function ProposalViewer({ slides, userIntent, apiKey, onSlidesCha
                   isSelected={selectedBlockIdx === j}
                   onSelect={setSelectedBlockIdx}
                   onChange={handleBlockChange}
+                  onDelete={handleBlockDelete}
                 />
               ))
             ) : (

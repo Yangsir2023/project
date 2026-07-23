@@ -23,7 +23,7 @@ function defaultContent(type) {
     case 'text':    return { text: 'Click to enter text content.', align: 'left' };
     case 'image':   return { src: '', alt: 'Image placeholder', fit: 'cover' };
     case 'button':  return { text: 'Click Button', variant: 'primary', href: '#' };
-    case 'card':    return { title: 'Card Title', body: 'Card description content', hasImage: false };
+    case 'card':    return { title: 'Card Title', body: 'Card description content', hasImage: false, imageSrc: '' };
     case 'list':    return { items: ['Item one', 'Item two', 'Item three'], style: 'bullet' };
     case 'hero':    return { title: 'Hero Title', sub: 'Subtitle text here', cta: 'Get Started' };
     case 'nav':     return { logo: 'Logo', links: ['Home', 'Features', 'Pricing', 'About'], cta: 'Sign In' };
@@ -35,6 +35,17 @@ function defaultContent(type) {
 
 const SNAP = 8;
 function snap(v) { return Math.round(v / SNAP) * SNAP; }
+
+/** Generate an SVG data-URI placeholder image */
+function generatePlaceholder(w, h, label) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect width="100%" height="100%" fill="#e2e8f0"/>
+  <rect x="1" y="1" width="${w-2}" height="${h-2}" fill="none" stroke="#cbd5e1" stroke-width="2" rx="4"/>
+  <text x="50%" y="45%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="14">📷</text>
+  <text x="50%" y="58%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="11">${label || 'Image'}</text>
+</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 function BlockRenderer({ block, isEditing, onStartEdit, onContentChange }) {
   const c = block.content;
@@ -79,7 +90,11 @@ function BlockRenderer({ block, isEditing, onStartEdit, onContentChange }) {
     case 'card':
       return (
         <div className="block-card">
-          {c.hasImage && <div className="block-card-img-placeholder" />}
+          {c.hasImage && (c.imageSrc ? (
+            <img src={c.imageSrc} alt={c.title} className="block-card-img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px 6px 0 0' }} />
+          ) : (
+            <div className="block-card-img-placeholder" />
+          ))}
           <div className="block-card-body">
             {isEditing ? (
               <input autoFocus className="block-inline-input" value={c.title}
@@ -314,8 +329,75 @@ function InspectorPanel({ slide, selectedBlock, onBlockChange, onSlideChange, on
           {block.type === 'image' && (
             <div className="inspector-field">
               <label className="inspector-field-label">Image URL</label>
-              <input className="inspector-input" value={block.content?.src || ''} placeholder="https://..."
-                onChange={e => onBlockChange(block.id, { content: { ...block.content, src: e.target.value } })} />
+              <input className="inspector-input" value={block.content?.src || ''} placeholder="https://... or upload below"
+                onChange={e => {
+                  const val = e.target.value;
+                  onBlockChange(block.id, { content: { ...block.content, src: val } });
+                  // Detect local file path and warn
+                  if (val && /^[A-Za-z]:\\|\/(home|Users|mnt)/.test(val)) {
+                    setTimeout(() => alert('⚠ Local file path detected!\n\nBrowsers cannot load files from your computer directly.\n\nPlease use the 📁 Upload button below to embed the image.'), 100);
+                  }
+                }} />
+              {(block.content?.src && /^[A-Za-z]:\\|\/(home|Users|mnt)/.test(block.content.src)) && (
+                <div style={{ marginTop:4, padding:'6px 8px', background:'#fef3c7', borderRadius:6, fontSize:11, color:'#92400e', border:'1px solid #fcd34d' }}>
+                  ⚠ Local path — browser cannot display this. Use <b>📁 Upload</b> above.
+                </div>
+              )}
+              <div className="inspector-image-actions">
+                <label className="inspector-image-upload-btn" title="Upload local image">
+                  📁 Upload
+                  <input type="file" accept="image/*" className="inspector-image-file-input"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => onBlockChange(block.id, { content: { ...block.content, src: ev.target.result, alt: f.name.replace(/\.[^.]+$/, '') } });
+                      reader.readAsDataURL(f);
+                    }} />
+                </label>
+                <button className="inspector-image-placeholder-btn"
+                  onClick={() => {
+                    const ph = generatePlaceholder(block.w || 240, block.h || 180, block.content?.alt || 'Image');
+                    onBlockChange(block.id, { content: { ...block.content, src: ph } });
+                  }}
+                  title="Auto-generate a placeholder image">✨ Placeholder</button>
+                {block.content?.src && (
+                  <button className="inspector-image-clear-btn"
+                    onClick={() => onBlockChange(block.id, { content: { ...block.content, src: '' } })}
+                    title="Clear image">✕ Clear</button>
+                )}
+              </div>
+            </div>
+          )}
+          {block.type === 'card' && (
+            <div className="inspector-field">
+              <label className="inspector-field-label">Card Image (optional)</label>
+              <input className="inspector-input" value={block.content?.imageSrc || ''} placeholder="https://... or upload"
+                onChange={e => onBlockChange(block.id, { content: { ...block.content, imageSrc: e.target.value, hasImage: !!e.target.value } })} />
+              <div className="inspector-image-actions">
+                <label className="inspector-image-upload-btn" title="Upload card image">
+                  📁 Upload
+                  <input type="file" accept="image/*" className="inspector-image-file-input"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => onBlockChange(block.id, { content: { ...block.content, imageSrc: ev.target.result, hasImage: true } });
+                      reader.readAsDataURL(f);
+                    }} />
+                </label>
+                <button className="inspector-image-placeholder-btn"
+                  onClick={() => {
+                    const ph = generatePlaceholder(block.w || 280, block.h || 140, block.content?.title || 'Card');
+                    onBlockChange(block.id, { content: { ...block.content, imageSrc: ph, hasImage: true } });
+                  }}
+                  title="Auto-generate placeholder">✨ Placeholder</button>
+                {block.content?.imageSrc && (
+                  <button className="inspector-image-clear-btn"
+                    onClick={() => onBlockChange(block.id, { content: { ...block.content, imageSrc: '', hasImage: false } })}
+                    title="Clear card image">✕ Clear</button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -637,7 +719,14 @@ export default function VisualEditor({
           <div className="ve-stage" style={{ background: slide?.bgColor || '#ffffff' }}
             onClick={handleCanvasClick} ref={canvasRef}>
             {showCompiledPreview && slide?.html ? (
-              <iframe className="ve-compiled-frame" srcDoc={slide.html} title={`Slide ${activeIdx+1}`} sandbox="allow-scripts" />
+              <iframe className="ve-compiled-frame" srcDoc={slide.html} title={`Slide ${activeIdx+1}`}
+                sandbox="allow-scripts allow-same-origin allow-popups" />
+            ) : showCompiledPreview ? (
+              <div className="ve-stage-empty">
+                <div className="ve-stage-empty-icon">◈</div>
+                <div className="ve-stage-empty-title">Nothing compiled yet</div>
+                <div className="ve-stage-empty-sub">Compile this slide first, then preview the generated HTML.</div>
+              </div>
             ) : (
               <>
                 {(slide?.blocks || []).map(block => (

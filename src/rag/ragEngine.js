@@ -1,17 +1,27 @@
 /**
- * RAG Engine — Retrieval-Augmented Generation
+ * RAG Engine — Retrieval-Augmented Generation (upgraded to hybrid)
+ * =================================================================
+ * v16 upgrade (minimal but effective):
+ *   - Original pure TF-IDF retrieval is PRESERVED as the zero-dependency fallback.
+ *   - New hybrid path (enabled after warmup): Sparse BM25  +  Dense Gemini
+ *     embedding  →  Reciprocal Rank Fusion (RRF, k=60).
+ *   - `retrieveComponents / retrievePatterns` keep their exact signatures and
+ *     return shape ([{component, score}] / [{pattern, score}]) so every caller
+ *     — including the synchronous UI path in App.jsx — is unaffected.
  *
- * 纯前端实现，无需外部向量数据库。
- * 使用 TF-IDF + 余弦相似度实现语义检索。
+ * Degradation tiers (all transparent to callers):
+ *   warmup done + query vector cached → Dense + BM25 → RRF (k=60)   [full hybrid]
+ *   warmup done, query not cached     → BM25 + TF-IDF → RRF          [sparse hybrid]
+ *   no key / network fail / no warmup  → original TF-IDF              [fallback]
  *
- * 知识库结构：
- *   - componentLibrary: UI 组件元数据（Ant Design / Material-UI 风格）
- *   - layoutPatterns: 常见网站布局模式
- *   - designTokens: 颜色/字体/间距设计规范
+ * Knowledge base structure:
+ *   - componentLibrary: UI component metadata (Ant Design / Material-UI style)
+ *   - layoutPatterns: common website layout patterns
+ *   - designTokens: colour / font / spacing specs
  */
 
 /* ═══════════════════════════════════════════════════════
-   内置组件知识库
+   内置组件知识库 (unchanged)
    ═══════════════════════════════════════════════════════ */
 
 export const COMPONENT_LIBRARY = [
@@ -176,7 +186,7 @@ export const COMPONENT_LIBRARY = [
     description: 'Bulleted list of features or benefits, often used in pricing cards or comparison sections.',
     tags: ['list', 'features', 'benefits', 'checkmark', 'bullet points'],
     blockType: 'list',
-    examples: ['Pricing features', 'Product benefits', 'What\'s included'],
+    examples: ['Pricing features', 'Product benefits', "What's included"],
     cssHints: 'list-style: none; padding: 0; li::before { content: "✓"; color: #22c55e; }',
     defaultContent: { items: ['Unlimited projects', 'Priority support', 'API access', 'Custom domains', 'Analytics dashboard'], style: 'bullet' },
   },
@@ -292,7 +302,7 @@ export const COMPONENT_LIBRARY = [
 ];
 
 /* ═══════════════════════════════════════════════════════
-   常见网站布局模式库
+   常见网站布局模式库 (unchanged)
    ═══════════════════════════════════════════════════════ */
 
 export const LAYOUT_PATTERNS = [
@@ -347,11 +357,11 @@ export const LAYOUT_PATTERNS = [
 ];
 
 /* ═══════════════════════════════════════════════════════
-   TF-IDF 向量检索核心
+   Lexical helpers — TF-IDF (original, ASCII) + CJK-aware BM25
    ═══════════════════════════════════════════════════════ */
 
 /**
- * 将文本分词（简单空格分词 + 小写化）
+ * Original ASCII tokenizer (kept for the TF-IDF fallback path).
  */
 function tokenize(text) {
   return text.toLowerCase()
@@ -361,28 +371,38 @@ function tokenize(text) {
 }
 
 /**
- * 构建 TF-IDF 矩阵
- * @param {Array} documents - [{id, text}]
- * @returns {Map} docId → {term: tfidf}
+ * CJK-aware tokenizer for BM25: ASCII words + per-char + bigrams for CJK.
+ * Fixes the original `tokenize()` which only handled ASCII.
  */
+function tokenizeCJK(text) {
+  const lower = (text || '').toLowerCase();
+  const tokens = [];
+  // ASCII / digit runs
+  (lower.match(/[a-z0-9]+/g) || []).forEach(m => { if (m.length > 1) tokens.push(m); });
+  // CJK characters + adjacent bigrams
+  const cjk = lower.match(/[一-鿿]/g) || [];
+  for (let i = 0; i < cjk.length; i++) {
+    tokens.push(cjk[i]);
+    if (i < cjk.length - 1) tokens.push(cjk[i] + cjk[i + 1]);
+  }
+  return tokens;
+}
+
+/* ── TF-IDF (original implementation, preserved) ── */
 function buildTFIDF(documents) {
   const N = documents.length;
-  const termDf = new Map(); // term → document frequency
+  const termDf = new Map();
 
-  // 计算 TF
   const docTF = documents.map(doc => {
     const tokens = tokenize(doc.text);
     const tf = new Map();
     tokens.forEach(t => tf.set(t, (tf.get(t) || 0) + 1));
-    // Normalize TF
     const maxFreq = Math.max(...tf.values(), 1);
     tf.forEach((v, k) => tf.set(k, v / maxFreq));
-    // 更新 DF
     new Set(tokens).forEach(t => termDf.set(t, (termDf.get(t) || 0) + 1));
     return { id: doc.id, tf };
   });
 
-  // 计算 TF-IDF
   const tfidfMatrix = new Map();
   docTF.forEach(({ id, tf }) => {
     const vec = new Map();
@@ -393,13 +413,9 @@ function buildTFIDF(documents) {
     });
     tfidfMatrix.set(id, vec);
   });
-
   return tfidfMatrix;
 }
 
-/**
- * 余弦相似度
- */
 function cosineSimilarity(vecA, vecB) {
   let dot = 0, normA = 0, normB = 0;
   vecA.forEach((v, k) => {
@@ -411,6 +427,118 @@ function cosineSimilarity(vecA, vecB) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+/* ── BM25 (new, sparse signal) ── */
+function buildBM25Index(documents, k1 = 1.5, b = 0.75) {
+  const df = new Map();
+  const docTf = documents.map(d => {
+    const toks = tokenizeCJK(d.text);
+    const tf = new Map();
+    toks.forEach(t => tf.set(t, (tf.get(t) || 0) + 1));
+    new Set(toks).forEach(t => df.set(t, (df.get(t) || 0) + 1));
+    return { id: d.id, tf, len: toks.length };
+  });
+  const N = docTf.length;
+  const avgdl = docTf.reduce((s, d) => s + d.len, 0) / (N || 1);
+  const idf = new Map();
+  df.forEach((freq, term) => {
+    idf.set(term, Math.log(1 + (N - freq + 0.5) / (freq + 0.5)));
+  });
+  return { docTf, idf, N, avgdl, k1, b };
+}
+
+function bm25Score(queryTokens, index, docId) {
+  const doc = (index.docTf || []).find(d => d.id === docId);
+  if (!doc) return 0;
+  let score = 0;
+  const qtf = new Map();
+  queryTokens.forEach(t => qtf.set(t, (qtf.get(t) || 0) + 1));
+  qtf.forEach((_qf, term) => {
+    const idf = index.idf.get(term) || 0;
+    const f = doc.tf.get(term) || 0;
+    if (f === 0) return;
+    score += idf * (f * (index.k1 + 1)) / (f + index.k1 * (1 - index.b + index.b * (doc.len / index.avgdl)));
+  });
+  return score;
+}
+
+/* ── Dense embedding (new, Gemini managed embedding) ── */
+const EMBED_MODEL = 'text-embedding-004';
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Embed a single text. Supports REST (apiKey) or SDK instance with
+ * embedContent. Returns Float32Array-like number[] or null on failure.
+ */
+async function embedText(text, opts) {
+  try {
+    if (opts && opts.apiKey) {
+      const url =
+        `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:embedContent?key=${opts.apiKey}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: { parts: [{ text }] },
+          taskType: 'RETRIEVAL_DOCUMENT',
+        }),
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data.embedding?.values || null;
+    }
+    if (opts && typeof opts.embedContent === 'function') {
+      const r = await opts.embedContent({
+        content: { parts: [{ text }] },
+        taskType: 'RETRIEVAL_DOCUMENT',
+      });
+      return r?.embedding?.values || null;
+    }
+    return null;
+  } catch (e) {
+    console.warn('[RAG] embedText failed:', e && e.message);
+    return null;
+  }
+}
+
+async function embedBatch(texts, opts) {
+  const out = [];
+  for (const t of texts) {
+    const e = await embedText(t, opts); // eslint-disable-line no-await-in-loop
+    if (!e) return null; // abort — dense path disabled if any doc fails
+    out.push(e);
+    await delay(40); // be gentle on rate limits
+  }
+  return out;
+}
+
+function cosineDense(a, b) {
+  if (!a || !b) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+/**
+ * Reciprocal Rank Fusion. rankLists: array of arrays of ids (rank order).
+ * Returns Map id -> fused score. k = 60 (validated during iFlytek internship).
+ */
+function reciprocalRankFusion(rankLists, k = 60) {
+  const scores = new Map();
+  for (const list of rankLists) {
+    if (!Array.isArray(list)) continue;
+    list.forEach((id, idx) => {
+      const rrf = 1 / (k + idx + 1);
+      scores.set(id, (scores.get(id) || 0) + rrf);
+    });
+  }
+  return scores;
+}
+
 /* ═══════════════════════════════════════════════════════
    RAG 主类
    ═══════════════════════════════════════════════════════ */
@@ -419,24 +547,32 @@ class RAGEngine {
   constructor() {
     this._componentIndex = null;
     this._patternIndex = null;
-    this._ready = false;
-    this._cache = new Map(); // query → results
+    this._ready = false;          // TF-IDF built
+    this._cache = new Map();      // query → results (compat)
+
+    // ── hybrid state ──
+    this._hybridEnabled = false;  // turned on after a successful warmup
+    this._bm25Ready = false;      // BM25 index built
+    this._hybridReady = false;    // dense doc embeddings computed
+    this._componentEmbeddings = null; // Map id -> Float[]
+    this._patternEmbeddings = null;   // Map id -> Float[]
+    this._componentBm25 = null;
+    this._patternBm25 = null;
+    this._queryCache = new Map(); // query -> Float[] (dense query vector)
+    this._embedOpts = null;
+    this._warmupPromise = null;
   }
 
-  /**
-   * 初始化索引（懒加载）
-   */
+  /* ── TF-IDF index (original, lazy) ── */
   _ensureIndex() {
     if (this._ready) return;
 
-    // 构建组件索引
     const componentDocs = COMPONENT_LIBRARY.map(c => ({
       id: c.id,
       text: `${c.name} ${c.description} ${c.tags.join(' ')} ${c.examples.join(' ')}`,
     }));
     this._componentIndex = buildTFIDF(componentDocs);
 
-    // 构建布局模式索引
     const patternDocs = LAYOUT_PATTERNS.map(p => ({
       id: p.id,
       text: `${p.name} ${p.description} ${p.tags.join(' ')}`,
@@ -444,19 +580,84 @@ class RAGEngine {
     this._patternIndex = buildTFIDF(patternDocs);
 
     this._ready = true;
-    console.log('[RAG] Index built:', componentDocs.length, 'components,', patternDocs.length, 'patterns');
+    console.log('[RAG] TF-IDF index built:', componentDocs.length, 'components,', patternDocs.length, 'patterns');
+  }
+
+  /* ── BM25 index (sync, no API) ── */
+  _ensureBm25() {
+    if (this._bm25Ready) return;
+    const componentDocs = COMPONENT_LIBRARY.map(c => ({
+      id: c.id,
+      text: `${c.name} ${c.description} ${c.tags.join(' ')} ${c.examples.join(' ')}`,
+    }));
+    const patternDocs = LAYOUT_PATTERNS.map(p => ({
+      id: p.id,
+      text: `${p.name} ${p.description} ${p.tags.join(' ')}`,
+    }));
+    this._componentBm25 = buildBM25Index(componentDocs);
+    this._patternBm25 = buildBM25Index(patternDocs);
+    this._bm25Ready = true;
   }
 
   /**
-   * 检索最相关的组件
-   * @param {string} query - 用户自然语言查询
-   * @param {number} topK - 返回前 K 个结果
-   * @param {string} [category] - 可选：按类别过滤
-   * @returns {Array} [{component, score}]
+   * warmup(modelOrOpts) — async, idempotent (same session runs once).
+   * Builds BM25 (sync) + dense doc embeddings (async, needs key/SDK).
+   * On any failure it degrades: BM25-only hybrid still works; dense is skipped.
+   * modelOrOpts: { apiKey }  OR  SDK embedding instance with embedContent.
    */
-  retrieveComponents(query, topK = 5, category = null) {
-    this._ensureIndex();
+  warmup(modelOrOpts = {}) {
+    if (this._warmupPromise) return this._warmupPromise;
 
+    this._warmupPromise = (async () => {
+      this._embedOpts = modelOrOpts && (modelOrOpts.apiKey || modelOrOpts.embedContent)
+        ? modelOrOpts
+        : null;
+      this._ensureBm25();
+      this._hybridEnabled = true; // hybrid (at least sparse) is now active
+
+      try {
+        const compTexts = COMPONENT_LIBRARY.map(c =>
+          `${c.name} ${c.description} ${c.tags.join(' ')} ${c.examples.join(' ')}`);
+        const patTexts = LAYOUT_PATTERNS.map(p =>
+          `${p.name} ${p.description} ${p.tags.join(' ')}`);
+        const [compEmb, patEmb] = await Promise.all([
+          embedBatch(compTexts, this._embedOpts),
+          embedBatch(patTexts, this._embedOpts),
+        ]);
+        if (compEmb) {
+          this._componentEmbeddings = new Map(compEmb.map((e, i) => [COMPONENT_LIBRARY[i].id, e]));
+        }
+        if (patEmb) {
+          this._patternEmbeddings = new Map(patEmb.map((e, i) => [LAYOUT_PATTERNS[i].id, e]));
+        }
+        if (compEmb && patEmb) this._hybridReady = true;
+        console.log('[RAG] warmup done — hybridReady =', this._hybridReady,
+          '| bm25Ready =', this._bm25Ready);
+      } catch (e) {
+        console.warn('[RAG] dense embedding skipped, BM25-only hybrid active:', e && e.message);
+      }
+      return { hybridReady: this._hybridReady, bm25Ready: this._bm25Ready };
+    })();
+
+    return this._warmupPromise;
+  }
+
+  /**
+   * embedQuery(query, opts) — async, precomputes & caches the query vector.
+   * Call once per generation before the synchronous retrieve* calls so the
+   * dense signal is available on the sync path.
+   */
+  async embedQuery(query, opts = {}) {
+    if (!this._hybridEnabled) return null;
+    if (this._queryCache.has(query)) return this._queryCache.get(query);
+    const o = opts.apiKey || opts.embedContent ? opts : (this._embedOpts || {});
+    const emb = await embedText(query, o);
+    if (emb) this._queryCache.set(query, emb);
+    return emb;
+  }
+
+  /* ── Original TF-IDF retrieval (kept as fallback + hybrid signal) ── */
+  _tfidfRetrieveComponents(query, topK = 5, category = null) {
     const cacheKey = `comp:${query}:${topK}:${category}`;
     if (this._cache.has(cacheKey)) return this._cache.get(cacheKey);
 
@@ -470,13 +671,9 @@ class RAGEngine {
     const results = candidates
       .map(component => {
         const docVec = this._componentIndex.get(component.id) || new Map();
-        // 构建查询的伪 TF-IDF（用 TF 近似）
         const qVec = new Map();
-        queryVec.forEach((v, k) => {
-          qVec.set(k, v / Math.max(...queryVec.values(), 1));
-        });
+        queryVec.forEach((v, k) => { qVec.set(k, v / Math.max(...queryVec.values(), 1)); });
         const score = cosineSimilarity(qVec, docVec);
-        // 额外：tag 精确匹配加分
         const tagBonus = component.tags.filter(t =>
           query.toLowerCase().includes(t.toLowerCase())
         ).length * 0.15;
@@ -490,15 +687,7 @@ class RAGEngine {
     return results;
   }
 
-  /**
-   * 检索最匹配的布局模式
-   * @param {string} query
-   * @param {number} topK
-   * @returns {Array} [{pattern, score}]
-   */
-  retrievePatterns(query, topK = 3) {
-    this._ensureIndex();
-
+  _tfidfRetrievePatterns(query, topK = 3) {
     const cacheKey = `pat:${query}:${topK}`;
     if (this._cache.has(cacheKey)) return this._cache.get(cacheKey);
 
@@ -510,9 +699,7 @@ class RAGEngine {
       .map(pattern => {
         const docVec = this._patternIndex.get(pattern.id) || new Map();
         const qVec = new Map();
-        queryVec.forEach((v, k) => {
-          qVec.set(k, v / Math.max(...queryVec.values(), 1));
-        });
+        queryVec.forEach((v, k) => { qVec.set(k, v / Math.max(...queryVec.values(), 1)); });
         const score = cosineSimilarity(qVec, docVec);
         const tagBonus = pattern.tags.filter(t =>
           query.toLowerCase().includes(t.toLowerCase())
@@ -527,28 +714,117 @@ class RAGEngine {
     return results;
   }
 
-  /**
-   * 综合检索 — 同时返回组件和布局建议
-   * @param {string} query
-   * @returns {{ components: Array, patterns: Array, context: string }}
-   */
+  /* ── Hybrid retrieval (BM25 + Dense + TF-IDF → RRF) ── */
+  _retrieveComponentsHybrid(query, topK, category) {
+    const queryTokens = tokenizeCJK(query);
+    const candidates = category
+      ? COMPONENT_LIBRARY.filter(c => c.category === category)
+      : COMPONENT_LIBRARY;
+    const rankLists = [];
+
+    if (this._bm25Ready) {
+      const ranked = candidates
+        .map(c => ({ id: c.id, s: bm25Score(queryTokens, this._componentBm25, c.id) }))
+        .sort((a, b) => b.s - a.s)
+        .map(x => x.id);
+      rankLists.push(ranked);
+    }
+    if (this._hybridReady && this._componentEmbeddings) {
+      const qEmb = this._queryCache.get(query);
+      if (qEmb) {
+        const ranked = candidates
+          .map(c => ({ id: c.id, s: cosineDense(qEmb, this._componentEmbeddings.get(c.id)) }))
+          .sort((a, b) => b.s - a.s)
+          .map(x => x.id);
+        rankLists.push(ranked);
+      }
+    }
+    // TF-IDF as an additional (3rd) signal list
+    rankLists.push(this._tfidfRetrieveComponents(query, topK + candidates.length, category).map(r => r.component.id));
+
+    if (rankLists.length === 0) return this._tfidfRetrieveComponents(query, topK, category);
+
+    const fused = reciprocalRankFusion(rankLists, 60);
+    const scored = candidates
+      .map(c => {
+        const rrf = fused.get(c.id) || 0;
+        const tagBonus = c.tags.filter(t => query.toLowerCase().includes(t.toLowerCase())).length * 0.15;
+        return { component: c, combined: rrf + tagBonus };
+      })
+      .filter(r => r.combined > 0)
+      .sort((a, b) => b.combined - a.combined)
+      .slice(0, topK);
+
+    const maxC = scored.length ? Math.max(...scored.map(r => r.combined)) : 1;
+    return scored.map(r => ({
+      component: r.component,
+      score: maxC > 0 ? r.combined / maxC : 0, // normalised to 0–1, top = 1
+    }));
+  }
+
+  _retrievePatternsHybrid(query, topK) {
+    const queryTokens = tokenizeCJK(query);
+    const rankLists = [];
+
+    if (this._bm25Ready) {
+      const ranked = LAYOUT_PATTERNS
+        .map(p => ({ id: p.id, s: bm25Score(queryTokens, this._patternBm25, p.id) }))
+        .sort((a, b) => b.s - a.s)
+        .map(x => x.id);
+      rankLists.push(ranked);
+    }
+    if (this._hybridReady && this._patternEmbeddings) {
+      const qEmb = this._queryCache.get(query);
+      if (qEmb) {
+        const ranked = LAYOUT_PATTERNS
+          .map(p => ({ id: p.id, s: cosineDense(qEmb, this._patternEmbeddings.get(p.id)) }))
+          .sort((a, b) => b.s - a.s)
+          .map(x => x.id);
+        rankLists.push(ranked);
+      }
+    }
+    rankLists.push(this._tfidfRetrievePatterns(query, topK + LAYOUT_PATTERNS.length).map(r => r.pattern.id));
+
+    if (rankLists.length === 0) return this._tfidfRetrievePatterns(query, topK);
+
+    const fused = reciprocalRankFusion(rankLists, 60);
+    const scored = LAYOUT_PATTERNS
+      .map(p => {
+        const rrf = fused.get(p.id) || 0;
+        const tagBonus = p.tags.filter(t => query.toLowerCase().includes(t.toLowerCase())).length * 0.2;
+        return { pattern: p, combined: rrf + tagBonus };
+      })
+      .filter(r => r.combined > 0)
+      .sort((a, b) => b.combined - a.combined)
+      .slice(0, topK);
+
+    const maxC = scored.length ? Math.max(...scored.map(r => r.combined)) : 1;
+    return scored.map(r => ({ pattern: r.pattern, score: maxC > 0 ? r.combined / maxC : 0 }));
+  }
+
+  /* ── Public API (signatures unchanged) ── */
+  retrieveComponents(query, topK = 5, category = null) {
+    this._ensureIndex();
+    if (this._hybridEnabled) return this._retrieveComponentsHybrid(query, topK, category);
+    return this._tfidfRetrieveComponents(query, topK, category); // original fallback
+  }
+
+  retrievePatterns(query, topK = 3) {
+    this._ensureIndex();
+    if (this._hybridEnabled) return this._retrievePatternsHybrid(query, topK);
+    return this._tfidfRetrievePatterns(query, topK);
+  }
+
   retrieve(query, opts = {}) {
     const { topComponents = 6, topPatterns = 2 } = opts;
     const components = this.retrieveComponents(query, topComponents);
     const patterns = this.retrievePatterns(query, topPatterns);
-
-    // 生成供 AI 使用的上下文字符串
     const context = this._buildContext(query, components, patterns);
-
     return { components, patterns, context };
   }
 
-  /**
-   * 构建注入 Prompt 的上下文
-   */
   _buildContext(query, components, patterns) {
     const lines = [];
-
     if (patterns.length > 0) {
       lines.push('=== RECOMMENDED LAYOUT PATTERNS ===');
       patterns.forEach(({ pattern, score }) => {
@@ -559,7 +835,6 @@ class RAGEngine {
       });
       lines.push('');
     }
-
     if (components.length > 0) {
       lines.push('=== RECOMMENDED COMPONENTS ===');
       components.forEach(({ component, score }) => {
@@ -569,15 +844,12 @@ class RAGEngine {
         lines.push(`  Default content: ${JSON.stringify(component.defaultContent)}`);
       });
     }
-
     return lines.join('\n');
   }
 
-  /**
-   * 清空缓存（用于测试）
-   */
   clearCache() {
     this._cache.clear();
+    this._queryCache.clear(); // drop cheap query vectors; keep doc embeddings + BM25
   }
 }
 
@@ -586,13 +858,10 @@ export const ragEngine = new RAGEngine();
 
 /**
  * 便捷函数：检索并注入上下文到 Prompt
- * @param {string} userPrompt
- * @returns {string} 增强后的 Prompt
  */
 export function augmentPromptWithRAG(userPrompt) {
   const { context } = ragEngine.retrieve(userPrompt);
   if (!context) return userPrompt;
-
   return `${userPrompt}
 
 --- RETRIEVED CONTEXT (use this to improve generation) ---
@@ -616,8 +885,6 @@ export function getRecommendedPatterns(userPrompt) {
 
 /**
  * 将 RAG 知识库序列化为纯文本（用于 Gemini Context Caching）
- * 返回的文本内容会作为 cachedContent 的一部分，避免每次重复上传
- * @returns {string} 知识库文本，约 3000-5000 tokens
  */
 export function getRAGKnowledgeText() {
   const components = COMPONENT_LIBRARY.map(c =>

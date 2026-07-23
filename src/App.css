@@ -1563,6 +1563,43 @@ body {
   display: block;
 }
 
+/* Image upload / placeholder actions */
+.inspector-image-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.inspector-image-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: var(--font);
+  background: var(--bg-white);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.inspector-image-upload-btn:hover { background: #eef2ff; }
+.inspector-image-file-input { display: none; }
+.inspector-image-placeholder-btn,
+.inspector-image-clear-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: var(--font);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--bg-white);
+  color: var(--text-2);
+}
+.inspector-image-placeholder-btn:hover { background: #f0fdf4; border-color:#86efac; color:#16a34a; }
+.inspector-image-clear-btn:hover { background: #fef2f2; border-color:#fca5a5; color:#dc2626; }
+
 /* Add block grid */
 .inspector-block-grid {
   display: grid;
@@ -2970,4 +3007,193 @@ body {
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE (≤768px)
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* ═══════════════════════════════════════════════════════
+     TOPBAR — 精简按钮 + 流程条可滑
+     ═══════════════════════════════════════════════════════ */
+  .topbar {
+    padding: 0 8px;
+    gap: 6px;
+    height: 44px;
+    flex-wrap: nowrap;
+  }
+  .topbar-logo-name { font-size: 13px; }
+  .topbar-logo-tag { display: none; }
+  /* 流程条：允许横向滑动 */
+  .phase-stepper {
+    flex: 1 1 auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: flex-start;
+    gap: 0;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .phase-stepper::-webkit-scrollbar { display: none; }
+  .phase-step-label { display: none; }
+  .phase-step { flex-shrink: 0; padding: 4px 2px; }
+  .phase-step-num { width: 20px; height: 20px; font-size: 10px; }
+  .phase-connector { width: 12px; margin: 0 1px; }
+  /* 右侧按钮区：隐藏高级功能，只留设置 + 重置 */
+  .topbar-right { gap: 4px; flex-shrink: 0; }
+  .topbar-btn { font-size: 11px; padding: 4px 8px; }
+  /* RAG / DAG / Flowco 按钮手机上隐藏 */
+  .topbar-btn--feature {
+    display: none;
+  }
+  /* 设置按钮精简 */
+  .topbar-btn--sm { font-size: 16px; padding: 3px 6px; }
+
+  /* ═══════════════════════════════════════════════════════
+     CHAT STAGE — 上下堆叠，面板全宽
+     ═══════════════════════════════════════════════════════ */
+  .chat-layout {
+    flex-direction: column;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chat-panel {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100vw;
+    flex-shrink: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .chat-panel-header { padding: 10px 12px; }
+  .chat-messages {
+    padding: 10px 12px;
+    max-height: 40vh;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chat-input-bar { padding: 8px 12px; }
+  .chat-info {
+    padding: 16px 14px;
+    gap: 16px;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chat-info-title { font-size: 18px; }
+  .chat-info-sub { font-size: 12px; max-width: 100%; }
+  .chat-features { grid-template-columns: 1fr; }
+  .chat-demos { gap: 6px; }
+  .chat-demo-chip { padding: 8px 10px; font-size: 12px; }
+
+  /* ═══════════════════════════════════════════════════════
+     PROPOSAL VIEWER — 隐藏缩略图，上下堆叠
+     ═══════════════════════════════════════════════════════ */
+  .pv-rail { display: none; }
+  .pv-root { flex-direction: column; }
+  .pv-canvas { flex: 0 1 auto; min-height: 35vh; }
+  .pv-canvas-header { padding: 0 10px; height: 38px; }
+  .pv-canvas-slide-name { font-size: 12px; }
+  .pv-canvas-stage { padding: 6px; overflow: auto; }
+  .pv-stage-bg { width: 100%; height: auto; aspect-ratio: 16 / 9; max-height: 45vh; }
+  .pv-dialog { width: 100%; min-width: 0; flex: 1; }
+  .pv-dialog-messages { max-height: 25vh; }
+  .pv-dialog-header { padding: 8px 10px 6px; }
+  .pv-canvas-actions { padding: 0 8px; height: 40px; gap: 6px; }
+  .pv-nav-btn { font-size: 11px; padding: 4px 8px; }
+  .pv-action-btn { font-size: 11px; padding: 4px 8px; }
+  .pv-action-btn--primary { padding: 4px 10px; }
+  /* 缩略图文字允许换行 */
+  .pv-thumb-name { white-space: normal; font-size: 11px; }
+
+  /* ═══════════════════════════════════════════════════════
+     VISUAL EDITOR — 隐藏缩略图，画布自适应
+     ═══════════════════════════════════════════════════════ */
+  .ve-rail { display: none; }
+  .ve-root { flex-direction: column; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+  .ve-canvas-wrap { min-height: 40vh; }
+  .ve-canvas-toolbar { padding: 0 8px; height: 34px; gap: 6px; }
+  .ve-canvas-slide-name { font-size: 11px; }
+  .ve-canvas-hint { display: none; }
+  .ve-stage-wrap { padding: 6px; overflow: auto; -webkit-overflow-scrolling: touch; }
+  .ve-stage {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 16 / 9;
+    max-width: 100vw;
+  }
+  .ve-right-panel { width: 100%; min-width: 0; max-height: 45vh; }
+  .ve-right-tab { font-size: 11px; padding: 6px 4px; }
+  .canvas-block-typetag { font-size: 8px; top: -14px; }
+  /* block 触摸优化 */
+  .canvas-block { touch-action: manipulation; }
+  .block-resize-handle { touch-action: none; }
+  /* 工具栏按钮精简 */
+  .ve-toolbar-btn { font-size: 10px; padding: 3px 8px; }
+
+  /* ═══════════════════════════════════════════════════════
+     DONE STAGE — 上下堆叠
+     ═══════════════════════════════════════════════════════ */
+  .done-stage { flex-direction: column; }
+  .done-left { width: 100%; min-width: 0; padding: 16px 14px; gap: 12px; }
+  .done-title { font-size: 18px; }
+  .done-left .done-actions { margin-top: 0; }
+  .done-right { min-height: 45vh; }
+  .done-preview-bar { padding: 5px 8px; height: 30px; }
+  .done-preview-url { font-size: 10px; }
+  /* URL 文字允许溢出省略 */
+  .done-url-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ═══════════════════════════════════════════════════════
+     SIDE PANELS — 全屏宽度
+     ═══════════════════════════════════════════════════════ */
+  .side-panel { width: 100%; max-width: 100vw; }
+  .side-panel--wide { width: 100%; }
+
+  /* ═══════════════════════════════════════════════════════
+     COMPILE STAGE
+     ═══════════════════════════════════════════════════════ */
+  .compile-log { width: 90%; max-width: 90vw; }
+  .compile-title { font-size: 16px; }
+
+  /* ═══════════════════════════════════════════════════════
+     API MODAL
+     ═══════════════════════════════════════════════════════ */
+  .api-modal { width: 92vw; max-width: 92vw; padding: 18px; }
+
+  /* ═══════════════════════════════════════════════════════
+     GLOBAL SCROLL FIX — 逐层解开 overflow hidden
+     ═══════════════════════════════════════════════════════ */
+  html, body, #root {
+    overflow: auto;
+    height: auto;
+    min-height: 100dvh;
+  }
+  .app {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible !important;
+  }
+  body {
+    overflow-x: hidden;
+    width: 100vw;
+  }
+  /* 所有阶段容器允许滚动 */
+  .chat-stage,
+  .compile-stage,
+  .done-stage,
+  .ve-root,
+  .pv-root {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* iOS 平滑滚动 */
+  .chat-messages,
+  .chat-info,
+  .done-left,
+  .ve-right-panel,
+  .pv-dialog-messages,
+  .ve-rail,
+  .pv-rail-list {
+    -webkit-overflow-scrolling: touch;
+  }
 }
