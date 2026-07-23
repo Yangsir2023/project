@@ -133,13 +133,15 @@ function autoFillImageBlocks(slides, sitePrompt) {
     blocks: (s.blocks || []).map(b => {
       if (b.type === 'image' && (!b.content?.src || b.content.src === '')) {
         imgCounter++;
-        const seed = Date.now() + imgCounter * 137;
-        return { ...b, content: { ...b.content, src: `https://loremflickr.com/${Math.round(b.w||800)}/${Math.round(b.h||600)}/${keywords}?lock=${seed}` } };
+        const seed = keywords.replace(/[^a-z0-9]/gi, '').slice(0, 12) || 'website';
+        const nonce = Date.now() + imgCounter * 137;
+        return { ...b, content: { ...b.content, src: `https://picsum.photos/seed/${seed}${nonce}/${Math.round(b.w||800)}/${Math.round(b.h||600)}` } };
       }
       if (b.type === 'card' && b.content?.hasImage && (!b.content?.imageSrc || b.content.imageSrc === '')) {
         imgCounter++;
-        const seed = Date.now() + imgCounter * 137;
-        return { ...b, content: { ...b.content, imageSrc: `https://loremflickr.com/${Math.round(b.w||800)}/${Math.round(b.h||400)}/${keywords}?lock=${seed}` } };
+        const seed = keywords.replace(/[^a-z0-9]/gi, '').slice(0, 12) || 'website';
+        const nonce = Date.now() + imgCounter * 137;
+        return { ...b, content: { ...b.content, imageSrc: `https://picsum.photos/seed/${seed}${nonce}/${Math.round(b.w||800)}/${Math.round(b.h||400)}` } };
       }
       return b;
     }),

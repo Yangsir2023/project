@@ -81,12 +81,12 @@ function extractKeywords(text) {
 
 /**
  * Generate a themed real-image URL based on site context.
- * Uses loremflickr.com for free keyword-based stock photos.
+ * Uses picsum.photos for reliable random stock photos (no API key needed).
  */
 function generateThemedImage(sitePrompt, w = 800, h = 600) {
-  const keywords = extractKeywords(sitePrompt);
-  const seed = Math.floor(Math.random() * 10000);
-  return `https://loremflickr.com/${Math.round(w)}/${Math.round(h)}/${keywords}?lock=${seed}`;
+  const seed = extractKeywords(sitePrompt).replace(/[^a-z0-9]/gi, '').slice(0, 12) || 'website';
+  const nonce = Math.floor(Math.random() * 10000);
+  return `https://picsum.photos/seed/${seed}${nonce}/${Math.round(w)}/${Math.round(h)}`;
 }
 
 /** Default site context when none provided */

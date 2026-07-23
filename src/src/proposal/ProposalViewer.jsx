@@ -28,7 +28,7 @@ const SNAP = 8;
 function snap(v) { return Math.round(v / SNAP) * SNAP; }
 
 /* ─── Draggable Block Preview ────────────────────────────── */
-function DraggableBlock({ block, index, isSelected, onSelect, onChange }) {
+function DraggableBlock({ block, index, isSelected, onSelect, onChange, onDelete }) {
   const dragRef = useRef(null);
   const resizeRef = useRef(null);
 
@@ -101,6 +101,106 @@ function DraggableBlock({ block, index, isSelected, onSelect, onChange }) {
   const pxW = block.w * scaleX;
   const pxH = block.h * scaleY;
 
+  /* Render block content preview */
+  const renderContent = () => {
+    const c = block.content || {};
+    switch (block.type) {
+      case 'heading':
+        return (
+          <div style={{ width: '100%', textAlign: c.align || 'center', padding: '4px 8px', overflow: 'hidden' }}>
+            <span style={{
+              fontSize: Math.min(pxW * 0.12, pxH * 0.5, 22),
+              fontWeight: c.level === 'h1' ? 800 : c.level === 'h2' ? 700 : 600,
+              color: s.color, lineHeight: 1.2,
+            }}>{c.text || 'Heading'}</span>
+          </div>
+        );
+      case 'text':
+        return (
+          <div style={{ width: '100%', textAlign: c.align || 'left', padding: '6px 10px', overflow: 'hidden' }}>
+            <span style={{ fontSize: Math.min(pxW * 0.08, pxH * 0.35, 13), color: '#475569', lineHeight: 1.4 }}>
+              {c.text || 'Text content'}
+            </span>
+          </div>
+        );
+      case 'hero':
+        return (
+          <div style={{ width: '100%', textAlign: 'center', padding: '8px 12px', overflow: 'hidden' }}>
+            <div style={{ fontSize: Math.min(pxW * 0.11, 20), fontWeight: 800, color: s.color, lineHeight: 1.2, marginBottom: 4 }}>{c.title || 'Hero Title'}</div>
+            <div style={{ fontSize: Math.min(pxW * 0.06, 13), color: '#64748b', lineHeight: 1.3, marginBottom: 6 }}>{c.sub || 'Subtitle here'}</div>
+            {c.cta && (
+              <span style={{ display: 'inline-block', padding: '4px 14px', background: s.color, color: 'white', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{c.cta}</span>
+            )}
+          </div>
+        );
+      case 'button':
+        return (
+          <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4 }}>
+            <span style={{
+              padding: '6px 18px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+              background: c.variant === 'ghost' ? 'transparent' : c.variant === 'danger' ? '#ef4444' : c.variant === 'secondary' ? '#e2e8f0' : s.color,
+              color: c.variant === 'secondary' ? '#475569' : c.variant === 'ghost' ? s.color : 'white',
+              border: c.variant === 'ghost' ? `1.5px solid ${s.color}` : 'none',
+            }}>{c.text || 'Button'}</span>
+          </div>
+        );
+      case 'nav':
+        return (
+          <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 10px', overflow: 'hidden', fontSize: 10 }}>
+            <span style={{ fontWeight: 700, color: s.color, fontSize: 12 }}>{c.logo || 'Logo'}</span>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {(c.links || []).slice(0, 5).map((l, i) => (
+                <span key={i} style={{ color: '#64748b', fontSize: 10 }}>{l}</span>
+              ))}
+            </div>
+            {c.cta && <span style={{ color: s.color, fontSize: 9, fontWeight: 600 }}>{c.cta}</span>}
+          </div>
+        );
+      case 'card':
+        return (
+          <div style={{ width: '100%', padding: '6px 8px', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: Math.min(13, pxH * 0.2), fontWeight: 700, color: '#1e293b' }}>{c.title || 'Card Title'}</div>
+            <div style={{ fontSize: 10, color: '#64748b', lineHeight: 1.3 }}>{c.body || 'Card description'}</div>
+          </div>
+        );
+      case 'list':
+        return (
+          <div style={{ width: '100%', padding: '6px 12px', textAlign: 'left', overflow: 'hidden' }}>
+            {(c.items || ['Item one', 'Item two']).map((item, i) => (
+              <div key={i} style={{ fontSize: 11, color: '#475569', lineHeight: 1.5, paddingLeft: 14, position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 0, color: s.color }}>{c.style === 'number' ? `${i+1}.` : '•'}</span>
+                {item}
+              </div>
+            ))}
+          </div>
+        );
+      case 'badge':
+        return (
+          <span style={{
+            padding: '3px 10px', borderRadius: 12, fontSize: 10, fontWeight: 600,
+            background: `${c.color || s.color}15`, border: `1px solid ${c.color || s.color}40`,
+            color: c.color || s.color,
+          }}>{c.text || 'Badge'}</span>
+        );
+      case 'image':
+        // Show image thumbnail if src available
+        if (c.src) {
+          return <img src={c.src} alt={c.alt || ''} style={{ width: '100%', height: '100%', objectFit: c.fit || 'cover', borderRadius: 2 }} />;
+        }
+        break;
+      // divider, and fallback: show icon
+      default:
+        break;
+    }
+    // Default fallback: icon + type label
+    return (
+      <>
+        <span style={{ fontSize: 14, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.icon}</span>
+        <span style={{ fontSize: 9, fontWeight: 600, color: '#64748b', marginTop: 2 }}>{block.type}</span>
+      </>
+    );
+  };
+
   return (
     <div
       style={{
@@ -121,12 +221,12 @@ function DraggableBlock({ block, index, isSelected, onSelect, onChange }) {
         boxShadow: isSelected ? '0 0 0 2px rgba(79,70,229,0.25)' : 'none',
         zIndex: isSelected ? 10 : 1,
         boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
       onMouseDown={handleDragMouseDown}
       onClick={(e) => { e.stopPropagation(); onSelect(index); }}
     >
-      <span style={{ fontSize: 14, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.icon}</span>
-      <span style={{ fontSize: 9, fontWeight: 600, color: '#64748b', marginTop: 2 }}>{block.type}</span>
+      {renderContent()}
 
       {/* SE resize handle */}
       {isSelected && (
@@ -145,6 +245,21 @@ function DraggableBlock({ block, index, isSelected, onSelect, onChange }) {
           }}
           onMouseDown={handleResizeMouseDown}
         />
+      )}
+      {/* Delete button */}
+      {isSelected && onDelete && (
+        <button
+          style={{
+            position: 'absolute', top: -8, right: -8,
+            width: 20, height: 20, borderRadius: '50%',
+            background: '#ef4444', color: 'white', border: '2px solid white',
+            fontSize: 12, lineHeight: '14px', cursor: 'pointer',
+            zIndex: 21, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0,
+          }}
+          onMouseDown={e => { e.stopPropagation(); onDelete(index); }}
+          title="Remove this block"
+        >×</button>
       )}
     </div>
   );
@@ -238,6 +353,15 @@ export default function ProposalViewer({ slides, userIntent, apiKey, onSlidesCha
         ...s,
         blocks: s.blocks.map((b, j) => j === blockIdx ? { ...b, ...patch } : b),
       };
+    }));
+  }, [activeIdx, onSlidesChange]);
+
+  /* Handle block delete in proposal canvas */
+  const handleBlockDelete = useCallback((blockIdx) => {
+    setSelectedBlockIdx(null);
+    onSlidesChange(prev => prev.map((s, i) => {
+      if (i !== activeIdx) return s;
+      return { ...s, blocks: s.blocks.filter((_, j) => j !== blockIdx) };
     }));
   }, [activeIdx, onSlidesChange]);
 
@@ -385,6 +509,7 @@ export default function ProposalViewer({ slides, userIntent, apiKey, onSlidesCha
                   isSelected={selectedBlockIdx === j}
                   onSelect={setSelectedBlockIdx}
                   onChange={handleBlockChange}
+                  onDelete={handleBlockDelete}
                 />
               ))
             ) : (

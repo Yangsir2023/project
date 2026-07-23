@@ -23,7 +23,7 @@ function defaultContent(type) {
     case 'text':    return { text: 'Click to enter text content.', align: 'left' };
     case 'image':   return { src: '', alt: 'Image placeholder', fit: 'cover' };
     case 'button':  return { text: 'Click Button', variant: 'primary', href: '#' };
-    case 'card':    return { title: 'Card Title', body: 'Card description content', hasImage: false };
+    case 'card':    return { title: 'Card Title', body: 'Card description content', hasImage: false, imageSrc: '' };
     case 'list':    return { items: ['Item one', 'Item two', 'Item three'], style: 'bullet' };
     case 'hero':    return { title: 'Hero Title', sub: 'Subtitle text here', cta: 'Get Started' };
     case 'nav':     return { logo: 'Logo', links: ['Home', 'Features', 'Pricing', 'About'], cta: 'Sign In' };
@@ -35,6 +35,62 @@ function defaultContent(type) {
 
 const SNAP = 8;
 function snap(v) { return Math.round(v / SNAP) * SNAP; }
+
+/** Generate an SVG data-URI placeholder image (fallback) */
+function generatePlaceholder(w, h, label) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect width="100%" height="100%" fill="#e2e8f0"/>
+  <rect x="1" y="1" width="${w-2}" height="${h-2}" fill="none" stroke="#cbd5e1" stroke-width="2" rx="4"/>
+  <text x="50%" y="45%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="14">📷</text>
+  <text x="50%" y="58%" text-anchor="middle" dominant-baseline="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="11">${label || 'Image'}</text>
+</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/* ─── Themed Image Auto-Generation ─────────────────────────────── */
+
+/** Extract relevant image-search keywords from a user prompt */
+function extractKeywords(text) {
+  if (!text) return 'website,business';
+  const lower = text.toLowerCase();
+  const topicMap = [
+    [/coffee|café|cafe|espresso|latte|brew|barista/gi, 'coffee,coffee-shop'],
+    [/restaurant|food|menu|dining|cuisine|dish/gi, 'restaurant,food'],
+    [/shop|store|boutique|retail|product|merchandise/gi, 'shop,store'],
+    [/saas|software|platform|app|dashboard|analytics/gi, 'technology,software'],
+    [/portfolio|photography|design|art|creative|studio/gi, 'design,creative'],
+    [/blog|writing|article|journal|news|content/gi, 'writing,journal'],
+    [/fitness|gym|workout|health|yoga|sport/gi, 'fitness,health'],
+    [/travel|hotel|vacation|trip|adventure|beach/gi, 'travel,vacation'],
+    [/real.estate|property|house|home|interior|architecture/gi, 'architecture,interior'],
+    [/education|school|course|learn|tutorial|academy/gi, 'education,study'],
+    [/fashion|clothing|style|wear|outfit/gi, 'fashion,clothing'],
+    [/music|concert|band|instrument|audio/gi, 'music,concert'],
+    [/pet|dog|cat|animal|veterinary/gi, 'pet,animal'],
+    [/nature|forest|mountain|ocean|landscape|outdoor/gi, 'nature,landscape'],
+    [/event|conference|meetup|festival|party/gi, 'event,conference'],
+    [/charity|non.profit|donation|community|social/gi, 'community,people'],
+    [/game|gaming|esports|play|player/gi, 'gaming,technology'],
+  ];
+  for (const [re, kw] of topicMap) {
+    if (re.test(lower)) return kw;
+  }
+  const words = lower.replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
+  return words.length > 0 ? words.slice(0, 3).join(',') : 'website,business';
+}
+
+/**
+ * Generate a themed real-image URL based on site context.
+ * Uses picsum.photos for reliable random stock photos (no API key needed).
+ */
+function generateThemedImage(sitePrompt, w = 800, h = 600) {
+  const seed = extractKeywords(sitePrompt).replace(/[^a-z0-9]/gi, '').slice(0, 12) || 'website';
+  const nonce = Math.floor(Math.random() * 10000);
+  return `https://picsum.photos/seed/${seed}${nonce}/${Math.round(w)}/${Math.round(h)}`;
+}
+
+/** Default site context when none provided */
+const DEFAULT_SITE_CONTEXT = 'Build an artisan coffee shop website with product showcase and cart';
 
 function BlockRenderer({ block, isEditing, onStartEdit, onContentChange }) {
   const c = block.content;
@@ -79,7 +135,11 @@ function BlockRenderer({ block, isEditing, onStartEdit, onContentChange }) {
     case 'card':
       return (
         <div className="block-card">
-          {c.hasImage && <div className="block-card-img-placeholder" />}
+          {c.hasImage && (c.imageSrc ? (
+            <img src={c.imageSrc} alt={c.title} className="block-card-img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px 6px 0 0' }} />
+          ) : (
+            <div className="block-card-img-placeholder" />
+          ))}
           <div className="block-card-body">
             {isEditing ? (
               <input autoFocus className="block-inline-input" value={c.title}
@@ -314,8 +374,75 @@ function InspectorPanel({ slide, selectedBlock, onBlockChange, onSlideChange, on
           {block.type === 'image' && (
             <div className="inspector-field">
               <label className="inspector-field-label">Image URL</label>
-              <input className="inspector-input" value={block.content?.src || ''} placeholder="https://..."
-                onChange={e => onBlockChange(block.id, { content: { ...block.content, src: e.target.value } })} />
+              <input className="inspector-input" value={block.content?.src || ''} placeholder="https://... or upload below"
+                onChange={e => {
+                  const val = e.target.value;
+                  onBlockChange(block.id, { content: { ...block.content, src: val } });
+                  // Detect local file path and warn
+                  if (val && /^[A-Za-z]:\\|\/(home|Users|mnt)/.test(val)) {
+                    setTimeout(() => alert('⚠ Local file path detected!\n\nBrowsers cannot load files from your computer directly.\n\nPlease use the 📁 Upload button below to embed the image.'), 100);
+                  }
+                }} />
+              {(block.content?.src && /^[A-Za-z]:\\|\/(home|Users|mnt)/.test(block.content.src)) && (
+                <div style={{ marginTop:4, padding:'6px 8px', background:'#fef3c7', borderRadius:6, fontSize:11, color:'#92400e', border:'1px solid #fcd34d' }}>
+                  ⚠ Local path — browser cannot display this. Use <b>📁 Upload</b> above.
+                </div>
+              )}
+              <div className="inspector-image-actions">
+                <label className="inspector-image-upload-btn" title="Upload local image">
+                  📁 Upload
+                  <input type="file" accept="image/*" className="inspector-image-file-input"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => onBlockChange(block.id, { content: { ...block.content, src: ev.target.result, alt: f.name.replace(/\.[^.]+$/, '') } });
+                      reader.readAsDataURL(f);
+                    }} />
+                </label>
+                <button className="inspector-image-placeholder-btn"
+                  onClick={() => {
+                    const themed = generateThemedImage(sitePrompt || DEFAULT_SITE_CONTEXT, block.w || 240, block.h || 180);
+                    onBlockChange(block.id, { content: { ...block.content, src: themed } });
+                  }}
+                  title="Auto-generate a themed image based on your site">🖼️ Auto Image</button>
+                {block.content?.src && (
+                  <button className="inspector-image-clear-btn"
+                    onClick={() => onBlockChange(block.id, { content: { ...block.content, src: '' } })}
+                    title="Clear image">✕ Clear</button>
+                )}
+              </div>
+            </div>
+          )}
+          {block.type === 'card' && (
+            <div className="inspector-field">
+              <label className="inspector-field-label">Card Image (optional)</label>
+              <input className="inspector-input" value={block.content?.imageSrc || ''} placeholder="https://... or upload"
+                onChange={e => onBlockChange(block.id, { content: { ...block.content, imageSrc: e.target.value, hasImage: !!e.target.value } })} />
+              <div className="inspector-image-actions">
+                <label className="inspector-image-upload-btn" title="Upload card image">
+                  📁 Upload
+                  <input type="file" accept="image/*" className="inspector-image-file-input"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => onBlockChange(block.id, { content: { ...block.content, imageSrc: ev.target.result, hasImage: true } });
+                      reader.readAsDataURL(f);
+                    }} />
+                </label>
+                <button className="inspector-image-placeholder-btn"
+                  onClick={() => {
+                    const themed = generateThemedImage(sitePrompt || DEFAULT_SITE_CONTEXT, block.w || 280, block.h || 140);
+                    onBlockChange(block.id, { content: { ...block.content, imageSrc: themed, hasImage: true } });
+                  }}
+                  title="Auto-generate a themed card image">🖼️ Auto Image</button>
+                {block.content?.imageSrc && (
+                  <button className="inspector-image-clear-btn"
+                    onClick={() => onBlockChange(block.id, { content: { ...block.content, imageSrc: '', hasImage: false } })}
+                    title="Clear card image">✕ Clear</button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -499,6 +626,7 @@ export default function VisualEditor({
   slides, activeIdx, onActiveChange, onSlidesChange,
   onCompileSlide, onDeploy, isDeploying,
   allCompiled, compiledCount, apiKey,
+  sitePrompt,
 }) {
   const [selectedBlockId, setSelectedBlockId] = useState(null);
   const [showCompiledPreview, setShowCompiledPreview] = useState(false);
@@ -562,6 +690,11 @@ export default function VisualEditor({
     const sizes = { nav:{ w:900,h:50 }, hero:{ w:700,h:160 }, divider:{ w:600,h:20 }, button:{ w:140,h:42 },
       badge:{ w:120,h:32 }, image:{ w:240,h:180 }, list:{ w:280,h:120 }, card:{ w:280,h:160 } };
     const { w = 200, h = 60 } = sizes[type] || {};
+    const content = defaultContent(type);
+    // Auto-generate themed real image for image blocks
+    if (type === 'image') {
+      content.src = generateThemedImage(sitePrompt || DEFAULT_SITE_CONTEXT, w, h);
+    }
     const newBlock = {
       id: `block-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, type,
       x: snap(100 + Math.random() * 400), y: snap(100 + Math.random() * 200), w, h,
@@ -569,7 +702,7 @@ export default function VisualEditor({
     };
     onSlidesChange(prev => prev.map((s, i) => i !== activeIdx ? s : { ...s, blocks: [...(s.blocks || []), newBlock] }));
     setSelectedBlockId(newBlock.id);
-  }, [slide, activeIdx, onSlidesChange]);
+  }, [slide, activeIdx, onSlidesChange, sitePrompt]);
 
   const handleAddSlide = useCallback(() => {
     const newSlide = { id: `slide-${Date.now()}`, name: `Slide ${slides.length + 1}`, status: 'idle', bgColor: '#ffffff', blocks: [], html: '' };
@@ -637,7 +770,14 @@ export default function VisualEditor({
           <div className="ve-stage" style={{ background: slide?.bgColor || '#ffffff' }}
             onClick={handleCanvasClick} ref={canvasRef}>
             {showCompiledPreview && slide?.html ? (
-              <iframe className="ve-compiled-frame" srcDoc={slide.html} title={`Slide ${activeIdx+1}`} sandbox="allow-scripts" />
+              <iframe className="ve-compiled-frame" srcDoc={slide.html} title={`Slide ${activeIdx+1}`}
+                sandbox="allow-scripts allow-same-origin allow-popups" />
+            ) : showCompiledPreview ? (
+              <div className="ve-stage-empty">
+                <div className="ve-stage-empty-icon">◈</div>
+                <div className="ve-stage-empty-title">Nothing compiled yet</div>
+                <div className="ve-stage-empty-sub">Compile this slide first, then preview the generated HTML.</div>
+              </div>
             ) : (
               <>
                 {(slide?.blocks || []).map(block => (
