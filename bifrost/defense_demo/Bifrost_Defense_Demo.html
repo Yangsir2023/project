@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bifrost 答辩演示脚本 · HCI Defense Demo (10–13 min)</title>
+<style>
+  :root{
+    --indigo:#6366f1; --purple:#8b5cf6; --slate:#1e293b; --slate2:#475569;
+    --slate3:#94a3b8; --bg:#0f172a; --card:#ffffff; --line:#e2e8f0;
+    --ok:#10b981; --warn:#f59e0b; --danger:#ef4444;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--slate); line-height:1.6;
+  }
+  /* ── Top nav ─────────────────────────────────────── */
+  .nav{
+    position:fixed; top:0; left:0; right:0; z-index:100;
+    display:flex; align-items:center; gap:8px; padding:10px 18px;
+    background:rgba(15,23,42,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .nav-logo{font-weight:800; color:#fff; font-size:18px; letter-spacing:.5px; margin-right:auto; display:flex; align-items:center; gap:8px;}
+  .nav-logo .dot{color:var(--purple);}
+  .nav-btn{
+    border:1px solid rgba(255,255,255,.16); background:transparent; color:#cbd5e1;
+    padding:7px 12px; border-radius:999px; font-size:13px; cursor:pointer; transition:.2s;
+  }
+  .nav-btn:hover{background:rgba(99,102,241,.25); color:#fff; border-color:var(--indigo);}
+  .nav-time{color:#94a3b8; font-size:12px; margin-left:6px; white-space:nowrap;}
+
+  /* ── Slides ──────────────────────────────────────── */
+  .slide{
+    min-height:100vh; padding:84px 6vw 60px;
+    display:flex; flex-direction:column; justify-content:center;
+    background:radial-gradient(1200px 600px at 80% -10%, rgba(99,102,241,.18), transparent 60%),
+               radial-gradient(900px 500px at 0% 110%, rgba(139,92,246,.16), transparent 55%),
+               #0b1220;
+    color:#e2e8f0;
+  }
+  .slide:nth-child(even){background:radial-gradient(1000px 600px at 10% -10%, rgba(139,92,246,.2), transparent 60%), #0b1220;}
+  .slide-head{margin-bottom:26px;}
+  .slide-tag{
+    display:inline-block; font-size:12px; font-weight:700; letter-spacing:1.5px;
+    color:#fff; background:linear-gradient(90deg,var(--indigo),var(--purple));
+    padding:5px 14px; border-radius:999px; margin-bottom:14px;
+  }
+  .slide-time{
+    float:right; font-size:13px; color:#0f172a; background:var(--warn);
+    padding:4px 12px; border-radius:999px; font-weight:700;
+  }
+  .slide-title{font-size:34px; font-weight:800; color:#fff; line-height:1.25;}
+  .slide-title .cn{display:block; font-size:20px; font-weight:600; color:#c7d2fe; margin-top:6px;}
+  .grid{display:grid; gap:18px; grid-template-columns:1fr 1fr;}
+  .grid.full{grid-template-columns:1fr;}
+  .grid.three{grid-template-columns:repeat(3,1fr);}
+  @media(max-width:900px){.grid,.grid.three{grid-template-columns:1fr;}}
+
+  .card{
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1);
+    border-radius:16px; padding:20px 22px;
+  }
+  .card h3{font-size:17px; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:8px;}
+  .card p,.card li{font-size:15px; color:#cbd5e1;}
+  .card ul{margin:8px 0 0 18px;}
+  .card li{margin:5px 0;}
+
+  .kpi{font-size:15px;}
+  .kpi .num{font-size:30px; font-weight:800; color:#fff; display:block;}
+  .kpi .num .en{font-size:15px; color:#a5b4fc; font-weight:600;}
+
+  /* emphasised text helpers */
+  .hl{color:#a5b4fc; font-weight:700;}
+  .hlw{background:linear-gradient(transparent 60%, rgba(245,158,11,.35) 0); color:#fde68a; font-weight:700; padding:0 2px;}
+  .ul{text-decoration:underline; text-decoration-color:var(--purple); text-decoration-thickness:2px;}
+
+  /* demo step list */
+  .steps{counter-reset:step; list-style:none; margin:0; padding:0;}
+  .steps li{
+    position:relative; padding:12px 14px 12px 46px; margin:10px 0;
+    background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.22);
+    border-radius:12px; font-size:14.5px; color:#e2e8f0;
+  }
+  .steps li::before{
+    counter-increment:step; content:counter(step);
+    position:absolute; left:12px; top:50%; transform:translateY(-50%);
+    width:24px; height:24px; border-radius:50%; background:var(--indigo); color:#fff;
+    font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;
+  }
+  .act{display:block; font-weight:700; color:#fff;}
+  .act::before{content:"▶ "; color:var(--ok);}
+  .say{display:block; margin-top:4px; color:#c7d2fe; font-style:italic;}
+  .say .cn{display:block; color:#94a3b8; font-style:normal; font-size:13px; margin-top:2px;}
+  .say .en{font-weight:600;}
+
+  .insight{
+    border-left:4px solid var(--ok); background:rgba(16,185,129,.08);
+    padding:14px 16px; border-radius:0 12px 12px 0; font-size:14.5px; color:#d1fae5;
+  }
+  .insight b{color:#6ee7b7;}
+
+  .bolt{
+    border-left:4px solid var(--warn); background:rgba(245,158,11,.08);
+    padding:14px 16px; border-radius:0 12px 12px 0; font-size:14.5px; color:#fef3c7;
+  }
+  .bolt b{color:#fcd34d;}
+
+  /* screenshot drop slot */
+  .shot{
+    min-height:220px; border:2px dashed rgba(165,180,252,.4); border-radius:14px;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    color:#94a3b8; font-size:14px; padding:18px; cursor:pointer; position:relative;
+    background:rgba(255,255,255,.02); overflow:hidden; transition:.2s;
+  }
+  .shot:hover{border-color:var(--indigo); background:rgba(99,102,241,.08);}
+  .shot.has-img{border-style:solid; border-color:transparent;}
+  .shot.has-img .shot-cap{display:none;}
+  .shot-img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#0b1220;}
+  .shot-cap b{color:#c7d2fe;}
+
+  .footer-hint{margin-top:22px; font-size:12.5px; color:#64748b; text-align:center;}
+
+  /* animation */
+  .an{opacity:0; transform:translateY(26px);}
+  .an.play{animation:fadeUp .6s cubic-bezier(.2,.7,.3,1) forwards;}
+  @keyframes fadeUp{to{opacity:1; transform:none;}}
+
+  /* outro checklist */
+  .check{list-style:none; margin:0; padding:0;}
+  .check li{padding:10px 12px; margin:8px 0; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; font-size:14.5px; color:#e2e8f0;}
+  .check .pf{font-weight:800; margin-right:8px;}
+  .check .pass{color:var(--ok);} .check .fail{color:var(--danger);}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">◈ Bifrost <span class="dot">·</span> HCI Defense</div>
+  <button class="nav-btn" onclick="go(1)">1 · Intro</button>
+  <button class="nav-btn" onclick="go(2)">2 · Chat vs Bolt</button>
+  <button class="nav-btn" onclick="go(3)">3 · Proposal</button>
+  <button class="nav-btn" onclick="go(4)">4 · Edit→Deploy</button>
+  <button class="nav-btn" onclick="go(5)">✓ Assess</button>
+  <span class="nav-time">Target 10–13 min · Pass/Fail</span>
+</nav>
+
+<!-- ══════════════════ PAGE 1 · INTRO ══════════════════ -->
+<section class="slide" id="p1">
+  <div class="slide-head an">
+    <span class="slide-time">⏱ ~1 min</span>
+    <span class="slide-tag">PAGE 1 · INTRODUCTION</span>
+    <div class="slide-title">Bifrost keeps the human <span class="hl">in control</span> of AI website generation
+      <span class="cn">Bifrost：让人类始终掌控 AI 建站过程</span>
+    </div>
+  </div>
+
+  <div class="grid three">
+    <div class="card an">
+      <h3>① Proposal–Confirm–Intervene</h3>
+      <p>AI <span class="hl">proposes</span>, you <span class="hl">confirm</span>. Nothing is final until you say yes.
+        <span class="cn" style="display:block;color:#94a3b8;font-size:13px;margin-top:4px;">AI 先提议，你再确认。没有你的同意，任何东西都不会被定稿。</span></p>
+    </div>
+    <div class="card an">
+      <h3>② Bounded Control Authority</h3>
+      <p>Freedom to create, inside <span class="ul">safe constraints</span> — the Freedom–Constraint Paradox.
+        <span class="cn" style="display:block;color:#94a3b8;font-size:13px;margin-top:4px;">在可控边界内自由创作 —— 自由与约束的平衡。</span></p>
+    </div>
+    <div class="card an">
+      <h3>③ Visual PPT-style Skeleton</h3>
+      <p>No blank canvas. AI draws an <span class="hl">editable sketch</span> you recognise.
+        <span class="cn" style="display:block;color:#94a3b8;font-size:13px;margin-top:4px;">告别空白画布。AI 先画出你能直接修改的可视化草图。</span></p>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:18px;">
+    <div class="card an">
+      <h3>④ Transparent &amp; Verifiable</h3>
+      <p>You can <span class="hlw">preview the real HTML</span> and compile step by step — trust comes from seeing, not believing.
+        <span class="cn" style="display:block;color:#94a3b8;font-size:13px;margin-top:4px;">你能预览真实 HTML、一步步编译。信任来自“看见”，而不是“相信”。</span></p>
+      <div class="kpi" style="margin-top:12px;"><span class="num">~10s <span class="en">vs ~25s baseline</span></span><span style="color:#94a3b8;">Parallel pipeline · 并行编译提速 2.5×</span></div>
+    </div>
+
+    <div class="bolt an">
+      <b>🤔 Should I open Bolt.new side-by-side?</b>
+      <ul style="margin-top:8px;">
+        <li><b>Yes</b> — open <span class="hl">bolt.new</span> on a <b>second screen</b> for Page 2 only (the Chat comparison). It makes the HCI gap visible.</li>
+        <li><b>Keep Bifrost as the hero.</b> Bolt is the “speed-first” baseline; Bifrost is the “control-first” answer.</li>
+        <li><b>Don't</b> let Bolt steal the screen — cut back to Bifrost within ~30s.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="shot an" style="margin-top:18px;" data-cap="📷 截图位：Bifrost 着陆页（Landing）— 展示 2.5× Faster 与主标题<bt>Drag screenshot here / 把着陆页截图拖进来</bt>">
+    <div class="shot-cap"><b>📷 截图位：Bifrost 着陆页（Landing）</b><br>Drag screenshot here / 把着陆页截图拖进来</div>
+  </div>
+
+  <div class="footer-hint">说稿：[Say] “Bifrost is not here to replace you. It is here to <span class="hl">build websites WITH you</span>.” / 「Bifrost 不是来替代你的，它是来和你一起建站的。」</div>
+</section>
+
+<!-- ══════════════════ PAGE 2 · CHAT vs BOLT ══════════════════ -->
+<section class="slide" id="p2">
+  <div class="slide-head an">
+    <span class="slide-time">⏱ ~3 min</span>
+    <span class="slide-tag">PAGE 2 · CHAT STAGE · COFFEE SHOP</span>
+    <div class="slide-title">Chat: clarify intent, then <span class="hl">propose</span> — not dump
+      <span class="cn">对话阶段：先澄清意图再提议，而不是一股脑生成</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card an">
+      <h3>🎬 Demo Script — Bifrost Chat</h3>
+      <ol class="steps">
+        <li><span class="act">Type the prompt</span>
+          <span class="say"><span class="en">“I want a coffee shop website called <b>Brew &amp; Co</b> — a hero, a menu, and a contact form.”</span>
+          <span class="cn">输入：「我要一个咖啡店网站，叫 Brew &amp; Co，要有首屏、菜单和联系表单。」</span></span></li>
+        <li><span class="act">Let Bifrost ask 1–2 clarifying questions</span>
+          <span class="say"><span class="en">“Notice it asks about style &amp; audience — it reduces ambiguity before building.”</span>
+          <span class="cn">注意它会问风格和受众 —— 在动手前先消除歧义。</span></span></li>
+        <li><span class="act">Show the structured proposal appear (blocks, not a full page)</span>
+          <span class="say"><span class="en">“You see a skeleton you can already read and steer.”</span>
+          <span class="cn">你会看到一个你能读懂、能引导的草图骨架。</span></span></li>
+      </ol>
+    </div>
+
+    <div class="card an">
+      <h3>🎬 Demo Script — Bolt.new (2nd screen)</h3>
+      <ol class="steps">
+        <li><span class="act">Open bolt.new, paste the SAME prompt</span>
+          <span class="say"><span class="en">“Same words. Watch what Bolt gives back.”</span>
+          <span class="cn">同样的句子，看看 Bolt 返回什么。</span></span></li>
+        <li><span class="act">Point at the instant full site</span>
+          <span class="say"><span class="en">“Bolt is fast — but the structure is fixed. Hard to change one piece.”</span>
+          <span class="cn">Bolt 很快，但结构是固定的，很难单独改一块。</span></span></li>
+        <li><span class="act">Alt-Tab back to Bifrost</span>
+          <span class="say"><span class="en">“Back to Bifrost — where YOU stay the author.”</span>
+          <span class="cn">切回 Bifrost —— 在这里你始终是作者。</span></span></li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:18px;">
+    <div class="insight an">
+      <b>💡 HCI insight (you may have missed this):</b> The real differentiator is not speed, it is <b>reduced blank-page anxiety</b> + <b>intent clarification</b>. A recognised skeleton lowers cognitive load and makes the user feel <b>agentic</b> from second one. Bolt optimises for <i>output speed</i>; Bifrost optimises for <i>user agency</i>.
+      <span style="display:block;color:#94a3b8;font-size:13px;margin-top:6px;">真正的差异不是速度，而是降低“空白页焦虑”+澄清意图。可识别的草图降低认知负荷，让用户从第一秒就有掌控感。</span>
+    </div>
+    <div class="shot an" data-cap="📷 截图位：左 Bifrost Chat 澄清问题 / 右 Bolt.new 即时整站<bt>Drag screenshot here / 拖入左右对比截图</bt>">
+      <div class="shot-cap"><b>📷 截图位：左 Bifrost Chat 澄清 · 右 Bolt.new 整站</b><br>Drag screenshot here / 拖入对比截图</div>
+    </div>
+  </div>
+  <div class="footer-hint">⏱ 控制时间：Bolt 演示不超过 30 秒，迅速切回 Bifrost，强调“control-first”。</div>
+</section>
+
+<!-- ══════════════════ PAGE 3 · PROPOSAL ══════════════════ -->
+<section class="slide" id="p3">
+  <div class="slide-head an">
+    <span class="slide-time">⏱ ~3 min</span>
+    <span class="slide-tag">PAGE 3 · PROPOSAL STAGE · EDIT ELEMENTS</span>
+    <div class="slide-title">Proposal: <span class="hl">add / delete / modify</span> — every step confirmed
+      <span class="cn">提案阶段：增 / 删 / 改，每一步都确认</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card an">
+      <h3>🎬 Demo Script — edit elements</h3>
+      <ol class="steps">
+        <li><span class="act">Double-click the hero title → change text live</span>
+          <span class="say"><span class="en">“Edit text directly on the canvas — WYSIWYG.”</span>
+          <span class="cn">直接在画布上改文字，所见即所得。</span></span></li>
+        <li><span class="act">Drag a block to move it; pull the corner handle to resize</span>
+          <span class="say"><span class="en">“Move and resize — the layout follows your hand.”</span>
+          <span class="cn">拖动移动、拉角缩放，布局跟着你的手走。</span></span></li>
+        <li><span class="act">Click a block → red × button appears → delete it</span>
+          <span class="say"><span class="en">“One click to remove — reversible, low cost.”</span>
+          <span class="cn">一键删除，可撤销，试错成本低。</span></span></li>
+        <li><span class="act">Open Properties panel → “Add block” → add a Testimonials card</span>
+          <span class="say"><span class="en">“Add a new piece from the panel — it syncs to the canvas instantly.”</span>
+          <span class="cn">从属性面板加新模块，立刻同步到画布。</span></span></li>
+      </ol>
+    </div>
+
+    <div class="card an">
+      <h3>🎬 Demo Script — confirm &amp; sync</h3>
+      <ol class="steps">
+        <li><span class="act">Make a change in AI Chat (right panel) → watch canvas update</span>
+          <span class="say"><span class="en">“Chat edits and canvas stay in sync — no hidden state.”</span>
+          <span class="cn">对话里的修改和画布实时同步，没有隐藏状态。</span></span></li>
+        <li><span class="act">Show the “Compile” gate is NOT yet pressed</span>
+          <span class="say"><span class="en">“Nothing is locked in. You confirm before we compile.”</span>
+          <span class="cn">一切都还没锁定，编译前由你确认。</span></span></li>
+        <li><span class="act">Point at each element’s confirm state</span>
+          <span class="say"><span class="en">“Every element is something you agreed to.”</span>
+          <span class="cn">每个元素都是你同意过的。</span></span></li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:18px;">
+    <div class="insight an">
+      <b>💡 HCI insight (proactive):</b> Three principles on display — (1) <b>reversible actions</b> lower the fear of breaking things; (2) <b>immediate WYSIWYG feedback</b> closes the action–result loop; (3) <b>discoverable controls</b> (the × button, corner handles) mean the user never has to guess. This is <b>Bounded Control Authority</b> in practice: free to change anything, but the system never changes it for you silently.
+      <span style="display:block;color:#94a3b8;font-size:13px;margin-top:6px;">可撤销、即时反馈、可发现的控件 —— 这就是“有边界的控制权”：你可以改任何东西，但系统绝不会偷偷替你改。</span>
+    </div>
+    <div class="shot an" data-cap="📷 截图位：Proposal 视图 — 选中元素显示 × 删除按钮 + 角点缩放<bt>Drag screenshot here / 拖入提案阶段截图</bt>">
+      <div class="shot-cap"><b>📷 截图位：Proposal 视图（选中元素 + 删除按钮 + 缩放手柄）</b><br>Drag screenshot here / 拖入截图</div>
+    </div>
+  </div>
+  <div class="footer-hint">⏱ 强调关键词：<span class="hl">reversible · WYSIWYG · no silent changes</span>（可撤销 · 所见即所得 · 不偷偷改）</div>
+</section>
+
+<!-- ══════════════════ PAGE 4 · EDIT → DEPLOY ══════════════════ -->
+<section class="slide" id="p4">
+  <div class="slide-head an">
+    <span class="slide-time">⏱ ~4 min</span>
+    <span class="slide-tag">PAGE 4 · EDIT STAGE · PREVIEW → COMPILE → DEPLOY</span>
+    <div class="slide-title">Edit: <span class="hlw">preview the real HTML</span>, then compile &amp; ship
+      <span class="cn">编辑阶段：先看真实 HTML，再编译、上线</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card an">
+      <h3>🎬 Demo Script — Preview &amp; AI add</h3>
+      <ol class="steps">
+        <li><span class="act">In Edit, click “👁 Preview HTML”</span>
+          <span class="say"><span class="en">“See the actual generated page — not a mock-up.”</span>
+          <span class="cn">看到真实生成的页面，不是假图。</span></span></li>
+        <li><span class="act">Use right-side AI Chat → “add a dark-mode toggle”</span>
+          <span class="say"><span class="en">“Add features by chat, then preview again.”</span>
+          <span class="cn">用右侧对话加功能，再预览一次。</span></span></li>
+        <li><span class="act">Upload an image via the 📁 button (demo data-URI embed)</span>
+          <span class="say"><span class="en">“Images embed as data — they survive Deploy.”</span>
+          <span class="cn">图片以 data URI 内嵌，部署后依然显示。</span></span></li>
+      </ol>
+    </div>
+
+    <div class="card an">
+      <h3>🎬 Demo Script — Compile &amp; Deploy</h3>
+      <ol class="steps">
+        <li><span class="act">Click “Compile” → status: Compiling → Compiled</span>
+          <span class="say"><span class="en">“Retry logic means it never sticks on Error.”</span>
+          <span class="cn">重试机制保证它不会卡在 Error。</span></span></li>
+        <li><span class="act">Compile all slides until “X/X compiled”</span>
+          <span class="say"><span class="en">“Every slide confirmed before we ship.”</span>
+          <span class="cn">每个页面都确认了才上线。</span></span></li>
+        <li><span class="act">Click “🚀 Deploy” → live preview shows full site WITH images</span>
+          <span class="say"><span class="en">“The human is the final gate. Done.”</span>
+          <span class="cn">人类是最后一道关卡。完成。</span></span></li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:18px;">
+    <div class="insight an">
+      <b>💡 HCI insight (proactive):</b> <b>Transparency builds trust.</b> The Preview-HTML button turns a black box into a glass box; the visible Compiling→Compiled state gives <b>feedback on system progress</b>; and Deploy only runs after <b>you</b> confirm every slide. That is <b>control authority made observable</b> — the examiner sees exactly where the human’s authority lives.
+      <span style="display:block;color:#94a3b8;font-size:13px;margin-top:6px;">透明建立信任。Preview 把黑盒变玻璃盒；编译状态给出系统进度反馈；部署前由你逐页确认 —— 控制权变得“可见”。</span>
+    </div>
+    <div class="shot an" data-cap="📷 截图位：Edit 视图 Preview HTML 显示真实页面 + Deploy 后带图整站<bt>Drag screenshot here / 拖入编辑与部署截图</bt>">
+      <div class="shot-cap"><b>📷 截图位：Edit 的 Preview HTML + Deploy 后带图整站</b><br>Drag screenshot here / 拖入截图</div>
+    </div>
+  </div>
+  <div class="footer-hint">⏱ 结尾金句：[Say] “The AI writes the code. <span class="hl">You</span> write the decisions.” / 「AI 写代码，你写决定。」</div>
+</section>
+
+<!-- ══════════════════ PAGE 5 · ASSESSMENT ══════════════════ -->
+<section class="slide" id="p5">
+  <div class="slide-head an">
+    <span class="slide-tag">PASS / FAIL SELF-CHECK</span>
+    <div class="slide-title">Will this pass? <span class="hl">The 5 gates</span>
+      <span class="cn">能过吗？五道关卡自查</span>
+    </div>
+  </div>
+  <div class="grid full">
+    <ul class="check an">
+      <li><span class="pf pass">PASS</span> Clear HCI framing — not “just a dev tool”, but <b>control authority</b> for users.</li>
+      <li><span class="pf pass">PASS</span> Live demo works end-to-end: Chat → Proposal → Edit → Preview → Compile → Deploy.</li>
+      <li><span class="pf pass">PASS</span> Images &amp; Preview HTML actually render (bugs fixed: data-URI embed + sandbox).</li>
+      <li><span class="pf pass">PASS</span> You stated the <b>limitation</b>: study is small (n=24), between-subjects, 1–7 Likert.</li>
+      <li><span class="pf fail">FAIL</span> If you talk only about code &amp; speed and skip the <b>human-in-the-loop</b> story.</li>
+    </ul>
+  </div>
+  <div class="bolt an" style="margin-top:18px;">
+    <b>🎤 30-second closing (memorise):</b><br>
+    “Bifrost shows that the future of AI web generation is not less human control — it is <span class="hl">better human control</span>: propose, confirm, intervene. The machine is fast; the person stays the author.”
+    <span style="display:block;color:#94a3b8;font-size:13px;margin-top:6px;">Bifrost 说明：AI 建站的未来不是更少的人类控制，而是更好的控制 —— 提议、确认、干预。机器很快，但人始终是作者。</span>
+  </div>
+</section>
+
+<script>
+  function go(n){ const el=document.getElementById('p'+n); if(el) el.scrollIntoView({behavior:'smooth'}); }
+
+  /* staggered fade-in on scroll (animation reset on re-enter) */
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        const items = e.target.querySelectorAll('.an');
+        items.forEach((it,i)=>{
+          it.style.animationDelay = (i*0.07)+'s';
+          it.classList.remove('play');
+          void it.offsetWidth;            // force reflow → restart CSS animation
+          it.classList.add('play');
+        });
+      }
+    });
+  },{threshold:0.2});
+  document.querySelectorAll('.slide').forEach(s=>io.observe(s));
+
+  /* drag / drop / click / paste to load screenshots into .shot slots */
+  document.querySelectorAll('.shot').forEach(slot=>{
+    const cap = slot.querySelector('.shot-cap');
+    const load = (file)=>{
+      if(!file || !file.type.startsWith('image/')) return;
+      const r = new FileReader();
+      r.onload = ev=>{
+        slot.classList.add('has-img');
+        let img = slot.querySelector('.shot-img');
+        if(!img){ img=document.createElement('img'); img.className='shot-img'; slot.appendChild(img); }
+        img.src = ev.target.result;
+      };
+      r.readAsDataURL(file);
+    };
+    slot.addEventListener('click', ()=>{
+      const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
+      inp.onchange=e=>load(e.target.files[0]); inp.click();
+    });
+    slot.addEventListener('dragover', e=>{e.preventDefault(); slot.style.borderColor='#6366f1';});
+    slot.addEventListener('dragleave', e=>{slot.style.borderColor='';});
+    slot.addEventListener('drop', e=>{e.preventDefault(); slot.style.borderColor=''; load(e.dataTransfer.files[0]);});
+    slot.addEventListener('paste', e=>{ const it=[...e.clipboardData.items].find(i=>i.type.startsWith('image/')); if(it) load(it.getAsFile()); });
+  });
+</script>
+</body>
+</html>

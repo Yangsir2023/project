@@ -1,5 +1,30 @@
-node_modules/  
-dist/  
-.env  
-.DS_Store  
-*.log  
+node_modules/
+dist/
+.env
+.env.*
+*.env.bak
+.DS_Store
+*.log
+
+# IDE / assistant workspaces
+.vscode/
+.workbuddy/
+
+# Thesis documents & drafts (not part of the codebase)
+*.docx
+*.pdf
+Bifrost_Thesis*
+Bifrost_*.md
+Bifrost-*.md
+Bifrost-*.docx
+_*.py
+_output/
+_pdf_tmp/
+_v15_figures/
+temp_preview/
+实验数据/
+实验数据SPASS 分析结果中英文/
+优化修改指南.md
+Bifrost_v15_to_v16_变化图.html
+Bifrost_v16_答辩细致图.html
+__pycache__/

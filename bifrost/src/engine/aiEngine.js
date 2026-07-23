@@ -4,8 +4,15 @@
  * 三个核心函数：
  * 1. generateSkeleton(model, prompt, log)  → 生成 PPT 骨架（幻灯片 + Visual Blocks）
  * 2. compileSlide(model, slide, prompt)    → 将单张幻灯片编译为真实 HTML
- * 3. generateFinalCode(model, slides, prompt) → 合并所有幻灯片生成完整网页 HTML
+ * 3. generateFinalCode(model, slides, prompt, opts) → 合并所有幻灯片生成完整网页 HTML
+ *
+ * v16: generateFinalCode accepts an optional 4th argument `opts.judge`
+ * (default false). When true, the VLM judge is triggered fire-and-forget
+ * against the generated HTML — see src/judge/judgeAgent.js. This keeps the
+ * SDK generation path consistent with the REST path in App.jsx.
  */
+
+import { judgeVisual } from '../judge/judgeAgent.js';
 
 /* ── JSON 解析辅助 ───────────────────────────────────────────────── */
 function parseJsonSafe(raw) {
@@ -201,13 +208,23 @@ ${blockSummary}
 /* ══════════════════════════════════════════════════════════════════
    3. generateFinalCode — 合并所有幻灯片生成完整网页
    ══════════════════════════════════════════════════════════════════ */
-export async function generateFinalCode(model, slides, sitePrompt) {
+export async function generateFinalCode(model, slides, sitePrompt, opts = {}) {
+
+  const triggerJudge = (html) => {
+    if (opts && opts.judge) {
+      const ak = opts.apiKey || null;
+      judgeVisual(null, html, { apiKey: ak, meta: { phase: 'deploy', source: 'aiEngine' } })
+        .catch(e => console.warn('[Judge] evaluation skipped:', e && e.message));
+    }
+  };
 
   const compiledSlides = slides.filter(s => s.status === 'compiled' && s.html);
 
   if (compiledSlides.length === 0) {
     // 直接用 blocks 信息生成完整网站
-    return generateFromBlocks(model, slides, sitePrompt);
+    const html = await generateFromBlocks(model, slides, sitePrompt);
+    triggerJudge(html);
+    return html;
   }
 
   // 从已编译 HTML 中提取 body 内容并合并
@@ -255,6 +272,7 @@ HTML: ${s.body.slice(0, 600)}...
 
   let html = result.response.text().trim();
   html = html.replace(/^```(?:html)?\s*/i, '').replace(/\s*```\s*$/, '');
+  triggerJudge(html);
   return html;
 }
 
