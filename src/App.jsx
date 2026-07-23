@@ -98,6 +98,54 @@ const PHASE = {
   DONE:      'done',
 };
 
+/* ─── Auto-fill themed images for image blocks ─────────────── */
+function extractKeywords(text) {
+  if (!text) return 'website,business';
+  const lower = text.toLowerCase();
+  const topicMap = [
+    [/coffee|café|cafe|espresso|latte|brew|barista/gi, 'coffee,coffee-shop'],
+    [/restaurant|food|menu|dining|cuisine|dish/gi, 'restaurant,food'],
+    [/shop|store|boutique|retail|product|merchandise/gi, 'shop,store'],
+    [/saas|software|platform|app|dashboard|analytics/gi, 'technology,software'],
+    [/portfolio|photography|design|art|creative|studio/gi, 'design,creative'],
+    [/blog|writing|article|journal|news|content/gi, 'writing,journal'],
+    [/fitness|gym|workout|health|yoga|sport/gi, 'fitness,health'],
+    [/travel|hotel|vacation|trip|adventure|beach/gi, 'travel,vacation'],
+    [/real.estate|property|house|home|interior|architecture/gi, 'architecture,interior'],
+    [/education|school|course|learn|tutorial|academy/gi, 'education,study'],
+    [/fashion|clothing|style|wear|outfit/gi, 'fashion,clothing'],
+    [/music|concert|band|instrument|audio/gi, 'music,concert'],
+    [/pet|dog|cat|animal|veterinary/gi, 'pet,animal'],
+    [/nature|forest|mountain|ocean|landscape|outdoor/gi, 'nature,landscape'],
+    [/event|conference|meetup|festival|party/gi, 'event,conference'],
+  ];
+  for (const [re, kw] of topicMap) { if (re.test(lower)) return kw; }
+  const words = lower.replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
+  return words.length > 0 ? words.slice(0, 3).join(',') : 'website,business';
+}
+
+function autoFillImageBlocks(slides, sitePrompt) {
+  if (!slides || !slides.length) return slides;
+  const keywords = extractKeywords(sitePrompt);
+  let imgCounter = 0;
+  return slides.map(s => ({
+    ...s,
+    blocks: (s.blocks || []).map(b => {
+      if (b.type === 'image' && (!b.content?.src || b.content.src === '')) {
+        imgCounter++;
+        const seed = Date.now() + imgCounter * 137;
+        return { ...b, content: { ...b.content, src: `https://loremflickr.com/${Math.round(b.w||800)}/${Math.round(b.h||600)}/${keywords}?lock=${seed}` } };
+      }
+      if (b.type === 'card' && b.content?.hasImage && (!b.content?.imageSrc || b.content.imageSrc === '')) {
+        imgCounter++;
+        const seed = Date.now() + imgCounter * 137;
+        return { ...b, content: { ...b.content, imageSrc: `https://loremflickr.com/${Math.round(b.w||800)}/${Math.round(b.h||400)}/${keywords}?lock=${seed}` } };
+      }
+      return b;
+    }),
+  }));
+}
+
 /* ─── Demo prompts ─────────────────────────────────────────────── */
 const DEMO_PROMPTS = [
   'Design a minimalist photography portfolio with dark mode toggle',
@@ -338,7 +386,8 @@ You can send as-is and I'll ask follow-up questions, or include details now for 
         rawSlides = buildFallbackSlides(promptToUse);
       }
 
-      const slidesWithProposal = rawSlides.map(s => ({ ...s, proposalStatus: 'pending' }));
+      const rawSlidesWithImages = autoFillImageBlocks(rawSlides, promptToUse);
+      const slidesWithProposal = rawSlidesWithImages.map(s => ({ ...s, proposalStatus: 'pending' }));
       setSlides(slidesWithProposal);
       setUserIntent(promptToUse);
       log(`✅ Generated ${rawSlides.length} slides`);
@@ -837,6 +886,7 @@ You can send as-is and I'll ask follow-up questions, or include details now for 
           allCompiled={allCompiled}
           compiledCount={compiledCount}
           apiKey={apiKey}
+          sitePrompt={userIntent}
         />
       )}
 

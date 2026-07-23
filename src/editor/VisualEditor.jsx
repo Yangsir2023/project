@@ -36,7 +36,7 @@ function defaultContent(type) {
 const SNAP = 8;
 function snap(v) { return Math.round(v / SNAP) * SNAP; }
 
-/** Generate an SVG data-URI placeholder image */
+/** Generate an SVG data-URI placeholder image (fallback) */
 function generatePlaceholder(w, h, label) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <rect width="100%" height="100%" fill="#e2e8f0"/>
@@ -46,6 +46,51 @@ function generatePlaceholder(w, h, label) {
 </svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
+
+/* ─── Themed Image Auto-Generation ─────────────────────────────── */
+
+/** Extract relevant image-search keywords from a user prompt */
+function extractKeywords(text) {
+  if (!text) return 'website,business';
+  const lower = text.toLowerCase();
+  const topicMap = [
+    [/coffee|café|cafe|espresso|latte|brew|barista/gi, 'coffee,coffee-shop'],
+    [/restaurant|food|menu|dining|cuisine|dish/gi, 'restaurant,food'],
+    [/shop|store|boutique|retail|product|merchandise/gi, 'shop,store'],
+    [/saas|software|platform|app|dashboard|analytics/gi, 'technology,software'],
+    [/portfolio|photography|design|art|creative|studio/gi, 'design,creative'],
+    [/blog|writing|article|journal|news|content/gi, 'writing,journal'],
+    [/fitness|gym|workout|health|yoga|sport/gi, 'fitness,health'],
+    [/travel|hotel|vacation|trip|adventure|beach/gi, 'travel,vacation'],
+    [/real.estate|property|house|home|interior|architecture/gi, 'architecture,interior'],
+    [/education|school|course|learn|tutorial|academy/gi, 'education,study'],
+    [/fashion|clothing|style|wear|outfit/gi, 'fashion,clothing'],
+    [/music|concert|band|instrument|audio/gi, 'music,concert'],
+    [/pet|dog|cat|animal|veterinary/gi, 'pet,animal'],
+    [/nature|forest|mountain|ocean|landscape|outdoor/gi, 'nature,landscape'],
+    [/event|conference|meetup|festival|party/gi, 'event,conference'],
+    [/charity|non.profit|donation|community|social/gi, 'community,people'],
+    [/game|gaming|esports|play|player/gi, 'gaming,technology'],
+  ];
+  for (const [re, kw] of topicMap) {
+    if (re.test(lower)) return kw;
+  }
+  const words = lower.replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
+  return words.length > 0 ? words.slice(0, 3).join(',') : 'website,business';
+}
+
+/**
+ * Generate a themed real-image URL based on site context.
+ * Uses loremflickr.com for free keyword-based stock photos.
+ */
+function generateThemedImage(sitePrompt, w = 800, h = 600) {
+  const keywords = extractKeywords(sitePrompt);
+  const seed = Math.floor(Math.random() * 10000);
+  return `https://loremflickr.com/${Math.round(w)}/${Math.round(h)}/${keywords}?lock=${seed}`;
+}
+
+/** Default site context when none provided */
+const DEFAULT_SITE_CONTEXT = 'Build an artisan coffee shop website with product showcase and cart';
 
 function BlockRenderer({ block, isEditing, onStartEdit, onContentChange }) {
   const c = block.content;
@@ -357,10 +402,10 @@ function InspectorPanel({ slide, selectedBlock, onBlockChange, onSlideChange, on
                 </label>
                 <button className="inspector-image-placeholder-btn"
                   onClick={() => {
-                    const ph = generatePlaceholder(block.w || 240, block.h || 180, block.content?.alt || 'Image');
-                    onBlockChange(block.id, { content: { ...block.content, src: ph } });
+                    const themed = generateThemedImage(sitePrompt || DEFAULT_SITE_CONTEXT, block.w || 240, block.h || 180);
+                    onBlockChange(block.id, { content: { ...block.content, src: themed } });
                   }}
-                  title="Auto-generate a placeholder image">✨ Placeholder</button>
+                  title="Auto-generate a themed image based on your site">🖼️ Auto Image</button>
                 {block.content?.src && (
                   <button className="inspector-image-clear-btn"
                     onClick={() => onBlockChange(block.id, { content: { ...block.content, src: '' } })}
@@ -388,10 +433,10 @@ function InspectorPanel({ slide, selectedBlock, onBlockChange, onSlideChange, on
                 </label>
                 <button className="inspector-image-placeholder-btn"
                   onClick={() => {
-                    const ph = generatePlaceholder(block.w || 280, block.h || 140, block.content?.title || 'Card');
-                    onBlockChange(block.id, { content: { ...block.content, imageSrc: ph, hasImage: true } });
+                    const themed = generateThemedImage(sitePrompt || DEFAULT_SITE_CONTEXT, block.w || 280, block.h || 140);
+                    onBlockChange(block.id, { content: { ...block.content, imageSrc: themed, hasImage: true } });
                   }}
-                  title="Auto-generate placeholder">✨ Placeholder</button>
+                  title="Auto-generate a themed card image">🖼️ Auto Image</button>
                 {block.content?.imageSrc && (
                   <button className="inspector-image-clear-btn"
                     onClick={() => onBlockChange(block.id, { content: { ...block.content, imageSrc: '', hasImage: false } })}
@@ -581,6 +626,7 @@ export default function VisualEditor({
   slides, activeIdx, onActiveChange, onSlidesChange,
   onCompileSlide, onDeploy, isDeploying,
   allCompiled, compiledCount, apiKey,
+  sitePrompt,
 }) {
   const [selectedBlockId, setSelectedBlockId] = useState(null);
   const [showCompiledPreview, setShowCompiledPreview] = useState(false);
@@ -644,6 +690,11 @@ export default function VisualEditor({
     const sizes = { nav:{ w:900,h:50 }, hero:{ w:700,h:160 }, divider:{ w:600,h:20 }, button:{ w:140,h:42 },
       badge:{ w:120,h:32 }, image:{ w:240,h:180 }, list:{ w:280,h:120 }, card:{ w:280,h:160 } };
     const { w = 200, h = 60 } = sizes[type] || {};
+    const content = defaultContent(type);
+    // Auto-generate themed real image for image blocks
+    if (type === 'image') {
+      content.src = generateThemedImage(sitePrompt || DEFAULT_SITE_CONTEXT, w, h);
+    }
     const newBlock = {
       id: `block-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, type,
       x: snap(100 + Math.random() * 400), y: snap(100 + Math.random() * 200), w, h,
@@ -651,7 +702,7 @@ export default function VisualEditor({
     };
     onSlidesChange(prev => prev.map((s, i) => i !== activeIdx ? s : { ...s, blocks: [...(s.blocks || []), newBlock] }));
     setSelectedBlockId(newBlock.id);
-  }, [slide, activeIdx, onSlidesChange]);
+  }, [slide, activeIdx, onSlidesChange, sitePrompt]);
 
   const handleAddSlide = useCallback(() => {
     const newSlide = { id: `slide-${Date.now()}`, name: `Slide ${slides.length + 1}`, status: 'idle', bgColor: '#ffffff', blocks: [], html: '' };
