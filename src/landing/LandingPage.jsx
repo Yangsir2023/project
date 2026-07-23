@@ -242,7 +242,8 @@ export default function LandingPage({ onEnter }) {
             <h2 className="lp-section-title">Five Control Mechanisms</h2>
             <p className="lp-section-sub">
               These are not product features — they are the <b>experimental operationalization</b> of control authority.<br />
-              The user study measured whether using these raises trust &rarr; <b>RQ1: d = 1.53</b> (large effect).
+              A between-subjects user study (n=24) tested whether these mechanisms <b>increase trust in AI-generated output</b>.<br />
+              Result: <b>t(22)=3.74, p&lt;.001, d=1.53</b> — a large effect size (Bifrost M=5.75 vs baseline M=4.00).
             </p>
           </div>
 
@@ -262,7 +263,7 @@ export default function LandingPage({ onEnter }) {
 
           <div className="lp-s3-note">
             🔵 <b>Why it matters:</b> these five mechanisms are how users keep control.
-            In the study, having them significantly increased trust (t(22)=3.74, p&lt;.001) — a large effect.
+            In the study, having them significantly increased trust (<b>t(22)=3.74, p&lt;.001, d=1.53</b>).
           </div>
         </section>
 
