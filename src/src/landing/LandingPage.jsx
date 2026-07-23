@@ -1,119 +1,108 @@
 import React, { useState, useEffect } from 'react';
 import './LandingPage.css';
 
-/* ─── Pipeline steps ─────────────────────────────── */
+/* ─── Pipeline steps (Section ②) ───────────────────
+   5 user-facing stages. RAG / DAG / Flowco are internal
+   sub-steps of Generate — NOT separate user stages. ── */
 const PIPELINE = [
-  { id: 1, icon: '💬', label: 'Chat', desc: 'Describe your idea in natural language' },
-  { id: 2, icon: '🧠', label: 'RAG Retrieve', desc: 'Component knowledge base retrieval' },
-  { id: 3, icon: '📐', label: 'Skeleton', desc: 'AI generates PPT-style visual outline' },
-  { id: 4, icon: '🔗', label: 'DAG Engine', desc: 'Build workflow dependency graph' },
-  { id: 5, icon: '✏️', label: 'Edit', desc: 'Drag-and-drop visual slide editor' },
-  { id: 6, icon: '🔍', label: 'Flowco Validate', desc: 'Data flow analysis & quality check' },
-  { id: 7, icon: '🚀', label: 'Deploy', desc: 'One-click publish to Vercel / Netlify' },
+  { id: 1, icon: '💬', label: 'Chat',     desc: 'Describe your idea in natural language',                 gate: false },
+  { id: 2, icon: '🧠', label: 'Generate',  desc: 'RAG + Gemini + DAG + Flowco run automatically',         gate: false },
+  { id: 3, icon: '📐', label: 'Proposal',  desc: 'AI generates skeleton → user CONFIRMS',                 gate: true  },  // human gate 1
+  { id: 4, icon: '✏️', label: 'Edit',      desc: 'Drag-and-drop visual editor → user EDITS',              gate: true  },  // human gate 2
+  { id: 5, icon: '🚀', label: 'Deploy',    desc: 'One-click publish to live URL',                         gate: false },
 ];
 
-/* ─── Feature cards ──────────────────────────────── */
-const FEATURES = [
+/* ─── Five Intervention Types (Section ③) ────────── */
+const INTERVENTIONS = [
   {
-    icon: '🤖',
-    tag: 'CORE',
-    tagColor: 'blue',
-    title: 'AI Chat Pipeline',
-    desc: 'Gemini-powered conversational interface that clarifies your intent before generating anything.',
-    bullets: ['Multi-turn context memory', 'Intent detection & validation', 'Smart clarification prompts'],
+    icon: '✅', tag: 'PROPOSAL', tagColor: 'blue',
+    title: 'Slide Confirmation',
+    desc: 'User reviews and approves the AI-generated skeleton before any code is produced.',
+    thesis: 'Review and approve the AI plan before any code is written — the "propose → confirm" step.',
   },
   {
-    icon: '🔍',
-    tag: 'RAG',
-    tagColor: 'purple',
-    title: 'Component Retrieval (RAG)',
-    desc: 'TF-IDF semantic search over 22 component templates and 6 layout patterns.',
-    bullets: ['Semantic similarity matching', 'Auto-augmented prompts', 'Layout pattern suggestions'],
+    icon: '🔧', tag: 'EDITOR', tagColor: 'orange',
+    title: 'Block Patching',
+    desc: 'Direct manipulation of individual content blocks — edit text, swap images, restyle inline.',
+    thesis: 'Edit any block directly — no need to re-prompt the AI.',
   },
   {
-    icon: '🗂️',
-    tag: 'VISUAL',
-    tagColor: 'blue',
-    title: 'PPT-style Visual Editor',
-    desc: 'Build websites like building slides — every section is an editable card.',
-    bullets: ['Drag & drop text boxes', 'Live preview per section', 'Multi-slide management'],
+    icon: '↔️', tag: 'SPATIAL', tagColor: 'purple',
+    title: 'Spatial Rearrangement',
+    desc: 'Drag blocks to reorder sections — the layout reflects user intent, not AI guesswork.',
+    thesis: 'Rearrange layout by dragging — your intent, not the AI’s guess.',
   },
   {
-    icon: '🔗',
-    tag: 'DAG',
-    tagColor: 'orange',
-    title: 'DAG Workflow Engine',
-    desc: 'Model complex multi-page websites as a dependency graph, not just a linear list.',
-    bullets: ['Topological sort execution', 'Cycle detection & warnings', 'Dependency visualization'],
+    icon: '➕', tag: 'INSPECTOR', tagColor: 'green',
+    title: 'Element Add / Remove',
+    desc: 'Insert new components or delete unwanted ones through the Inspector panel.',
+    thesis: 'Add or remove sections freely to shape the page structure.',
   },
   {
-    icon: '🔁',
-    tag: 'FLOWCO',
-    tagColor: 'green',
-    title: 'Flowco Data Flow Validator',
-    desc: 'Automatically analyzes your slide data flow and catches errors before code generation.',
-    bullets: ['Empty content detection', 'Layout conflict checks', 'Alt-text accessibility audit'],
-  },
-  {
-    icon: '🚀',
-    tag: 'DEPLOY',
-    tagColor: 'red',
-    title: 'One-click Deploy',
-    desc: 'From local HTML to a live URL in seconds — supports Vercel, Netlify and local download.',
-    bullets: ['Vercel API integration', 'Netlify drag-drop deploy', 'Offline HTML bundle download'],
-  },
-  {
-    icon: '⚡',
-    tag: 'SPEED',
-    tagColor: 'yellow',
-    title: 'Parallel Pipeline Engine',
-    desc: 'Skeleton-of-Thought inspired parallel compilation — 3x faster than serial generation.',
-    bullets: ['Concurrent slide compilation', 'Intelligent batch scheduling', 'Real-time progress streaming'],
+    icon: '💬', tag: 'AI PANEL', tagColor: 'blue',
+    title: 'Chat-Patch',
+    desc: 'Request changes via natural language while preserving existing manual edits.',
+    thesis: 'Ask for changes in plain language while keeping your manual edits.',
   },
 ];
 
-/* ─── Tech stack badges ─────────────────────────── */
-const STACK = [
-  'Gemini 2.5 Flash', 'React 19', 'Vite', 'TF-IDF RAG',
-  'DAG Topological Sort', 'Flowco Validator', 'Vercel API', 'Netlify API',
+/* ─── Architecture flow (Section ①) ─────────────────
+   Honest model: the engine (RAG → Gemini → DAG → Flowco)
+   runs AUTOMATICALLY. Humans stay in control at exactly
+   TWO real gates — Proposal and Edit. No fake checkpoints
+   between the auto layers. ─────────────────────────── */
+const ARCH_FLOW = [
+  {
+    kind: 'layer',
+    label: 'INPUT',
+    boxes: [
+      { icon: '💬', title: 'User Intent', sub: 'Natural language description', color: 'blue' },
+    ],
+  },
+  {
+    kind: 'engine',
+    label: 'ENGINE · AUTOMATED',
+    note: 'No human in the loop — runs automatically',
+    boxes: [
+      { icon: '🔍', title: 'RAG Engine',      sub: 'Hybrid: Dense + BM25 + RRF', color: 'purple' },
+      { icon: '📚', title: 'Knowledge Base',  sub: '22 Components · 6 Patterns',  color: 'purple' },
+      { icon: '🧠', title: 'Gemini 2.5 Flash', sub: 'Augmented prompt → JSON',     color: 'blue'   },
+      { icon: '🔗', title: 'DAG Engine',      sub: 'Dependency graph',            color: 'orange' },
+      { icon: '🔁', title: 'Flowco',          sub: 'Data flow validation',        color: 'green'  },
+    ],
+  },
+  {
+    kind: 'gate',
+    title: 'Proposal',
+    desc: 'User reviews & confirms the AI skeleton — first human gate',
+  },
+  {
+    kind: 'gate',
+    title: 'Edit',
+    desc: 'Drag-and-drop visual editor — second human gate',
+  },
+  {
+    kind: 'layer',
+    label: 'OUTPUT',
+    boxes: [
+      { icon: '🚀', title: 'Live Website', sub: 'Vercel · Netlify · Local HTML', color: 'red' },
+    ],
+  },
 ];
-
-/* ─── Stats ─────────────────────────────────────── */
-const STATS = [
-  { value: '7', unit: 'Stage', label: 'AI Pipeline' },
-  { value: '22', unit: 'Built-in', label: 'Components' },
-  { value: '6', unit: 'Layout', label: 'Patterns' },
-  { value: '3x', unit: 'Faster', label: 'Parallel Engine' },
-];
-
-/* ─── Speed comparison ────────────────────────────── */
-const SPEED_COMPARE = {
-  before: { label: 'Before (Serial)', time: '20s', color: '#f87171' },
-  after:  { label: 'After (Parallel)', time: '7s',  color: '#34d399' },
-  stages: [
-    { name: 'RAG Retrieve',  before: 0.05, after: 0.05 },
-    { name: 'Skeleton Gen',  before: 4,    after: 2    },
-    { name: 'DAG + Flowco', before: 0.03, after: 0.03 },
-    { name: 'Compile ×N',    before: 12,   after: 3.5  },
-    { name: 'Final Code',    before: 4,    after: 1.5  },
-  ],
-};
 
 export default function LandingPage({ onEnter }) {
   const [activePipe, setActivePipe] = useState(0);
   const [visible, setVisible] = useState(false);
 
-  /* Entrance animation */
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 80);
     return () => clearTimeout(t);
   }, []);
 
-  /* Auto-advance pipeline indicator */
   useEffect(() => {
     const t = setInterval(() => {
       setActivePipe(p => (p + 1) % PIPELINE.length);
-    }, 1800);
+    }, 2000);
     return () => clearInterval(t);
   }, []);
 
@@ -125,7 +114,7 @@ export default function LandingPage({ onEnter }) {
   return (
     <div className={`lp-root ${visible ? 'lp-root--visible' : ''}`}>
 
-      {/* ── Animated background ────────────────────── */}
+      {/* ── Background ───────────────────────────── */}
       <div className="lp-bg">
         <div className="lp-bg-orb lp-bg-orb--1" />
         <div className="lp-bg-orb lp-bg-orb--2" />
@@ -136,22 +125,22 @@ export default function LandingPage({ onEnter }) {
       <div className="lp-scroll">
 
         {/* ══════════════════════════════════════════
-            HERO
+            HERO — Research Prototype Framing
             ══════════════════════════════════════════ */}
         <section className="lp-hero">
           <div className="lp-hero-badge">
             <span className="lp-badge-dot" />
-            AI-Powered · Visual · End-to-End
+            Research Prototype &middot; Newcastle University MSc Dissertation
           </div>
 
           <h1 className="lp-hero-title">
             <span className="lp-hero-title-line1">Bifrost</span>
-            <span className="lp-hero-title-line2">Visual AI Web Engine</span>
+            <span className="lp-hero-title-line2">Human-Controlled AI Visual Content Generation</span>
           </h1>
 
           <p className="lp-hero-sub">
-            Describe a website in plain English.<br />
-            Bifrost retrieves, generates, validates, and deploys — automatically.
+            A research prototype that tests one question:<br />
+            <span className="lp-hero-rq">"If we keep humans in control during AI visual content generation, do they trust the output more?"</span>
           </p>
 
           <div className="lp-hero-actions">
@@ -161,39 +150,81 @@ export default function LandingPage({ onEnter }) {
                 <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-            <div className="lp-hero-hint">No backend · No signup · API key only</div>
-          </div>
-
-          {/* Stats row */}
-          <div className="lp-stats">
-            {STATS.map(s => (
-              <div key={s.label} className="lp-stat">
-                <div className="lp-stat-value">
-                  {s.value}<span className="lp-stat-unit">{s.unit}</span>
-                </div>
-                <div className="lp-stat-label">{s.label}</div>
-              </div>
-            ))}
+            <div className="lp-hero-hint">Research Prototype — MSc Dissertation Project</div>
           </div>
         </section>
 
         {/* ══════════════════════════════════════════
-            PIPELINE VISUALIZER
+            SECTION ① · ARCHITECTURE
             ══════════════════════════════════════════ */}
-        <section className="lp-section">
+        <section className="lp-section lp-section--dark lp-s1">
           <div className="lp-section-header">
-            <span className="lp-section-tag">HOW IT WORKS</span>
-            <h2 className="lp-section-title">7-Stage AI Pipeline</h2>
-            <p className="lp-section-sub">Every step is visible, editable and explainable</p>
+            <span className="lp-section-tag lp-section-tag--num">① ARCHITECTURE</span>
+            <h2 className="lp-section-title">Architecture: Automated Engine, Two Human Gates</h2>
+            <p className="lp-section-sub">
+              The engine (RAG → Gemini → DAG → Flowco) runs <em>automatically</em>. Humans stay in control at exactly two points: <em>Proposal</em> and <em>Edit</em>.
+            </p>
+          </div>
+
+          <div className="lp-arch">
+            {ARCH_FLOW.map((item, i) => (
+              <React.Fragment key={item.kind + '-' + i}>
+                {item.kind === 'gate' ? (
+                  <div className="lp-arch-gate">
+                    <div className="lp-arch-gate-badge">🛑 HUMAN GATE</div>
+                    <div className="lp-arch-gate-title">{item.title}</div>
+                    <div className="lp-arch-gate-desc">{item.desc}</div>
+                  </div>
+                ) : (
+                  <div className={`lp-arch-layer ${item.kind === 'engine' ? 'lp-arch-layer--engine' : ''}`}>
+                    <div className="lp-arch-layer-label">{item.label}</div>
+                    {item.kind === 'engine' && <div className="lp-arch-engine-note">{item.note}</div>}
+                    <div className={item.boxes.length > 1 ? 'lp-arch-row lp-arch-row--wrap' : ''}>
+                      {item.boxes.map((box, bi) => (
+                        <div key={bi} className={`lp-arch-box lp-arch-box--${box.color} ${item.boxes.length > 1 ? 'lp-arch-box--sm' : ''}`}>
+                          <div className="lp-arch-box-icon">{box.icon}</div>
+                          <div className="lp-arch-box-title">{box.title}</div>
+                          <div className="lp-arch-box-sub">{box.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {i < ARCH_FLOW.length - 1 && (
+                  <div className="lp-arch-vline-wrap">
+                    <div className="lp-arch-vline" />
+                  </div>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+
+          <div className="lp-s1-note">
+            🔵 <b>Control where it matters:</b> the engine runs on its own — you step in only at the two <b>real</b> gates, Proposal and Edit. No decorative checkpoints between auto layers.
+          </div>
+        </section>
+
+        {/* ══════════════════════════════════════════
+            SECTION ② · PIPELINE
+            ══════════════════════════════════════════ */}
+        <section className="lp-section lp-s2">
+          <div className="lp-section-header">
+            <span className="lp-section-tag lp-section-tag--num">② PIPELINE</span>
+            <h2 className="lp-section-title">5 Stages, 2 Human Gates</h2>
+            <p className="lp-section-sub">
+              Staged design prevents "<em>silent error propagation</em>":
+              errors are caught before commitment, not discovered after deployment.
+            </p>
           </div>
 
           <div className="lp-pipeline">
             {PIPELINE.map((step, i) => (
               <React.Fragment key={step.id}>
                 <div
-                  className={`lp-pipe-node ${activePipe === i ? 'lp-pipe-node--active' : ''}`}
+                  className={`lp-pipe-node ${activePipe === i ? 'lp-pipe-node--active' : ''} ${step.gate ? 'lp-pipe-node--gate' : ''}`}
                   onClick={() => setActivePipe(i)}
                 >
+                  {step.gate && <div className="lp-pipe-gate-badge">HUMAN GATE</div>}
                   <div className="lp-pipe-icon">{step.icon}</div>
                   <div className="lp-pipe-label">{step.label}</div>
                   <div className="lp-pipe-desc">{step.desc}</div>
@@ -209,224 +240,52 @@ export default function LandingPage({ onEnter }) {
               </React.Fragment>
             ))}
           </div>
+
+          <div className="lp-s2-note">
+            🟧 <b>Two control gates:</b> Proposal and Edit. RAG, DAG and Flowco run automatically inside Generate — your two gates are where mistakes get caught before they spread.
+          </div>
         </section>
 
         {/* ══════════════════════════════════════════
-            FEATURES GRID
+            SECTION ③ · FIVE INTERVENTIONS
             ══════════════════════════════════════════ */}
-        <section className="lp-section">
+        <section className="lp-section lp-section--dark lp-s3">
           <div className="lp-section-header">
-            <span className="lp-section-tag">CAPABILITIES</span>
-            <h2 className="lp-section-title">Everything You Need</h2>
-            <p className="lp-section-sub">From raw idea to deployed website, powered by AI at every stage</p>
+            <span className="lp-section-tag lp-section-tag--num">③ INTERVENTIONS</span>
+            <h2 className="lp-section-title">Five Control Mechanisms</h2>
+            <p className="lp-section-sub">
+              These are not product features — they are how Bifrost keeps the <b>human in control</b> at every stage of AI generation.
+            </p>
           </div>
 
-          <div className="lp-features-grid">
-            {FEATURES.map(f => (
-              <div key={f.title} className="lp-feature-card">
-                <div className="lp-feature-top">
-                  <div className="lp-feature-icon">{f.icon}</div>
-                  <span className={`lp-feature-tag lp-feature-tag--${f.tagColor}`}>{f.tag}</span>
+          <div className="lp-interventions-grid">
+            {INTERVENTIONS.map(iv => (
+              <div key={iv.title} className="lp-intervention-card">
+                <div className="lp-intervention-top">
+                  <div className="lp-intervention-icon">{iv.icon}</div>
+                  <span className={`lp-feature-tag lp-feature-tag--${iv.tagColor}`}>{iv.tag}</span>
                 </div>
-                <h3 className="lp-feature-title">{f.title}</h3>
-                <p className="lp-feature-desc">{f.desc}</p>
-                <ul className="lp-feature-bullets">
-                  {f.bullets.map(b => (
-                    <li key={b}>
-                      <span className="lp-bullet-check">✓</span>
-                      {b}
-                    </li>
-                  ))}
-                </ul>
+                <h3 className="lp-intervention-title">{iv.title}</h3>
+                <p className="lp-intervention-desc">{iv.desc}</p>
+                <div className="lp-intervention-thesis">{iv.thesis}</div>
               </div>
             ))}
           </div>
-        </section>
 
-        {/* ══════════════════════════════════════════
-            WORKFLOW DIAGRAM
-            ══════════════════════════════════════════ */}
-        {/* ════════════════════════════════════════
-            PERFORMANCE COMPARISON
-            ════════════════════════════════════════ */}
-        <section className="lp-section">
-          <div className="lp-section-header">
-            <span className="lp-section-tag">PERFORMANCE</span>
-            <h2 className="lp-section-title">3x Faster with Parallel Pipeline</h2>
-            <p className="lp-section-sub">Skeleton-of-Thought inspired concurrent compilation</p>
-          </div>
-          <div className="lp-perf">
-            <div className="lp-perf-cards">
-              <div className="lp-perf-card lp-perf-card--before">
-                <div className="lp-perf-card-label">Before</div>
-                <div className="lp-perf-card-time">20s</div>
-                <div className="lp-perf-card-desc">Serial compilation</div>
-                <div className="lp-perf-card-bar">
-                  <div className="lp-perf-bar lp-perf-bar--before" style={{ width: '100%' }} />
-                </div>
-              </div>
-              <div className="lp-perf-arrow">→</div>
-              <div className="lp-perf-card lp-perf-card--after">
-                <div className="lp-perf-card-label">After</div>
-                <div className="lp-perf-card-time">7s</div>
-                <div className="lp-perf-card-desc">Parallel compilation</div>
-                <div className="lp-perf-card-bar">
-                  <div className="lp-perf-bar lp-perf-bar--after" style={{ width: '35%' }} />
-                </div>
-              </div>
-            </div>
-            <div className="lp-perf-breakdown">
-              <div className="lp-perf-breakdown-title">Stage-by-stage breakdown</div>
-              {SPEED_COMPARE.stages.map(s => {
-                const beforePct = Math.max(s.before, 0.02) / 20 * 100;
-                const afterPct  = Math.max(s.after,  0.02) / 7  * 100;
-                return (
-                  <div key={s.name} className="lp-perf-row">
-                    <div className="lp-perf-row-name">{s.name}</div>
-                    <div className="lp-perf-row-bars">
-                      <div className="lp-perf-row-bar-wrap">
-                        <div className="lp-perf-row-bar lp-perf-row-bar--before" style={{ width: `${beforePct}%` }} />
-                        <span className="lp-perf-row-val">{s.before}s</span>
-                      </div>
-                      <div className="lp-perf-row-bar-wrap">
-                        <div className="lp-perf-row-bar lp-perf-row-bar--after" style={{ width: `${afterPct}%` }} />
-                        <span className="lp-perf-row-val">{s.after}s</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="lp-perf-total">
-                <span>Total</span>
-                <span className="lp-perf-total-before">20s</span>
-                <span className="lp-perf-total-after">7s</span>
-                <span className="lp-perf-total-badge">2.9x speedup</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="lp-section lp-section--dark">
-          <div className="lp-section-header">
-            <span className="lp-section-tag lp-section-tag--light">ARCHITECTURE</span>
-            <h2 className="lp-section-title lp-section-title--light">Multi-Stage LLM Pipeline</h2>
-            <p className="lp-section-sub lp-section-sub--light">Controlled Natural Language Prompting at every stage</p>
-          </div>
-
-          <div className="lp-arch">
-            {/* Input layer */}
-            <div className="lp-arch-layer">
-              <div className="lp-arch-layer-label">INPUT</div>
-              <div className="lp-arch-box lp-arch-box--blue">
-                <div className="lp-arch-box-icon">💬</div>
-                <div className="lp-arch-box-title">User Intent</div>
-                <div className="lp-arch-box-sub">Natural language description</div>
-              </div>
-            </div>
-
-            <div className="lp-arch-vline" />
-
-            {/* Retrieve layer */}
-            <div className="lp-arch-layer">
-              <div className="lp-arch-layer-label">RETRIEVE</div>
-              <div className="lp-arch-row">
-                <div className="lp-arch-box lp-arch-box--purple lp-arch-box--sm">
-                  <div className="lp-arch-box-icon">🔍</div>
-                  <div className="lp-arch-box-title">RAG Engine</div>
-                  <div className="lp-arch-box-sub">TF-IDF Semantic Search</div>
-                </div>
-                <div className="lp-arch-box lp-arch-box--purple lp-arch-box--sm">
-                  <div className="lp-arch-box-icon">📚</div>
-                  <div className="lp-arch-box-title">Knowledge Base</div>
-                  <div className="lp-arch-box-sub">22 Components · 6 Patterns</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="lp-arch-vline" />
-
-            {/* Generate layer */}
-            <div className="lp-arch-layer">
-              <div className="lp-arch-layer-label">GENERATE</div>
-              <div className="lp-arch-box lp-arch-box--blue">
-                <div className="lp-arch-box-icon">🧠</div>
-                <div className="lp-arch-box-title">Gemini 2.5 Flash</div>
-                <div className="lp-arch-box-sub">Augmented prompt → JSON skeleton</div>
-              </div>
-            </div>
-
-            <div className="lp-arch-vline" />
-
-            {/* Process layer */}
-            <div className="lp-arch-layer">
-              <div className="lp-arch-layer-label">PROCESS</div>
-              <div className="lp-arch-row">
-                <div className="lp-arch-box lp-arch-box--orange lp-arch-box--sm">
-                  <div className="lp-arch-box-icon">🔗</div>
-                  <div className="lp-arch-box-title">DAG Engine</div>
-                  <div className="lp-arch-box-sub">Dependency graph</div>
-                </div>
-                <div className="lp-arch-box lp-arch-box--green lp-arch-box--sm">
-                  <div className="lp-arch-box-icon">🔁</div>
-                  <div className="lp-arch-box-title">Flowco</div>
-                  <div className="lp-arch-box-sub">Data flow validation</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="lp-arch-vline" />
-
-            {/* Output layer */}
-            <div className="lp-arch-layer">
-              <div className="lp-arch-layer-label">OUTPUT</div>
-              <div className="lp-arch-box lp-arch-box--red">
-                <div className="lp-arch-box-icon">🚀</div>
-                <div className="lp-arch-box-title">Live Website</div>
-                <div className="lp-arch-box-sub">Vercel · Netlify · Local HTML</div>
-              </div>
-            </div>
+          <div className="lp-s3-note">
+            🔵 <b>Core idea:</b> the system proposes, but the human decides — at proposal, edit, and every step in between.
           </div>
         </section>
 
         {/* ══════════════════════════════════════════
-            TECH STACK
+            FOOTER (simplified)
             ══════════════════════════════════════════ */}
-        <section className="lp-section">
-          <div className="lp-section-header">
-            <span className="lp-section-tag">TECH STACK</span>
-            <h2 className="lp-section-title">Built with Modern Tools</h2>
-          </div>
-          <div className="lp-stack">
-            {STACK.map(s => (
-              <span key={s} className="lp-stack-badge">{s}</span>
-            ))}
-          </div>
-        </section>
-
-        {/* ══════════════════════════════════════════
-            CTA
-            ══════════════════════════════════════════ */}
-        <section className="lp-cta">
-          <div className="lp-cta-glow" />
-          <h2 className="lp-cta-title">Ready to build?</h2>
-          <p className="lp-cta-sub">
-            Add your Gemini API key and start building your first website with AI.
-          </p>
-          <button className="lp-btn-primary lp-btn-primary--lg" onClick={handleEnter}>
-            <span>Launch Bifrost</span>
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M4 10h12M12 6l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-        </section>
-
-        {/* Footer */}
         <footer className="lp-footer">
-          <span>Bifrost Visual AI Web Engine</span>
-          <span className="lp-footer-dot">·</span>
-          <span>Newcastle University Dissertation Project</span>
-          <span className="lp-footer-dot">·</span>
-          <span>Built with Gemini 2.5 Flash</span>
+          <span>Bifrost</span>
+          <span className="lp-footer-dot">&middot;</span>
+          <span>Newcastle University &mdash; School of Computing</span>
+          <span className="lp-footer-dot">&middot;</span>
+          <span>CSC8099 MSc Dissertation</span>
         </footer>
 
       </div>
