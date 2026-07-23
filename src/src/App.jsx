@@ -1193,30 +1193,30 @@ function bid() { return `b${++_bid}-${Date.now().toString(36)}`; }
 function buildFallbackSlides(prompt) {
   return [
     {
-      id: 'slide-1', name: '导航 + Hero', status: 'skeleton', bgColor: '#f8fafc',
+      id: 'slide-1', name: 'Navbar + Hero', status: 'skeleton', bgColor: '#f8fafc',
       blocks: [
-        { id: bid(), type: 'nav',     x:0,    y:0,    w:1000, h:56,  zIndex:1, content:{ logo:'Bifrost', links:['首页','功能','关于'], cta:'开始使用' } },
-        { id: bid(), type: 'hero',    x:80,   y:100,  w:800,  h:180, zIndex:1, content:{ title:'用自然语言，构建你的网站', sub:'告别空白画布，AI 瞬间生成可视化骨架', cta:'免费体验' } },
-        { id: bid(), type: 'button',  x:340,  y:300,  w:160,  h:48,  zIndex:1, content:{ text:'立即体验', variant:'primary', href:'#' } },
-        { id: bid(), type: 'badge',   x:400,  y:70,   w:160,  h:32,  zIndex:2, content:{ text:'✨ 全新发布', color:'#6366f1' } },
+        { id: bid(), type: 'nav',     x:0,    y:0,    w:1000, h:56,  zIndex:1, content:{ logo:'Bifrost', links:['Home','Features','About'], cta:'Get Started' } },
+        { id: bid(), type: 'hero',    x:80,   y:100,  w:800,  h:180, zIndex:1, content:{ title:'Build Your Website with Natural Language', sub:'Say goodbye to blank canvases — AI generates your visual skeleton instantly', cta:'Try Free' } },
+        { id: bid(), type: 'button',  x:340,  y:300,  w:160,  h:48,  zIndex:1, content:{ text:'Get Started', variant:'primary', href:'#' } },
+        { id: bid(), type: 'badge',   x:400,  y:70,   w:160,  h:32,  zIndex:2, content:{ text:'✨ Research Prototype', color:'#6366f1' } },
       ],
     },
     {
-      id: 'slide-2', name: '功能特性', status: 'skeleton', bgColor: '#ffffff',
+      id: 'slide-2', name: 'Features', status: 'skeleton', bgColor: '#ffffff',
       blocks: [
-        { id: bid(), type: 'heading', x:200, y:40,  w:600, h:60,  zIndex:1, content:{ text:'三大核心优势', level:'h2', align:'center' } },
-        { id: bid(), type: 'card',    x:40,  y:120, w:280, h:200, zIndex:1, content:{ title:'⚡ 瞬间生成', body:'输入意图，0.1秒生成完整骨架', hasImage:false } },
-        { id: bid(), type: 'card',    x:360, y:120, w:280, h:200, zIndex:1, content:{ title:'🎨 PPT式编辑', body:'像改幻灯片一样自由修改', hasImage:false } },
-        { id: bid(), type: 'card',    x:660, y:120, w:280, h:200, zIndex:1, content:{ title:'🚀 一键上线', body:'从想法到上线，分钟级交付', hasImage:false } },
+        { id: bid(), type: 'heading', x:200, y:40,  w:600, h:60,  zIndex:1, content:{ text:'Three Core Advantages', level:'h2', align:'center' } },
+        { id: bid(), type: 'card',    x:40,  y:120, w:280, h:200, zIndex:1, content:{ title:'⚡ Instant Generation', body:'Describe your intent — get a complete skeleton in seconds', hasImage:false } },
+        { id: bid(), type: 'card',    x:360, y:120, w:280, h:200, zIndex:1, content:{ title:'🎨 Slide-Style Editing', body:'Edit freely like rearranging presentation slides', hasImage:false } },
+        { id: bid(), type: 'card',    x:660, y:120, w:280, h:200, zIndex:1, content:{ title:'🚀 One-Click Deploy', body:'From idea to live site — delivery in minutes', hasImage:false } },
       ],
     },
     {
-      id: 'slide-3', name: '页脚', status: 'skeleton', bgColor: '#f1f5f9',
+      id: 'slide-3', name: 'Footer', status: 'skeleton', bgColor: '#f1f5f9',
       blocks: [
         { id: bid(), type: 'divider', x:40,  y:30,  w:920, h:16,  zIndex:1, content:{ style:'line' } },
         { id: bid(), type: 'heading', x:40,  y:70,  w:300, h:40,  zIndex:1, content:{ text:'Bifrost', level:'h3', align:'left' } },
-        { id: bid(), type: 'text',     x:40,  y:120, w:400, h:60,  zIndex:1, content:{ text:'以自然语言与可视化草图驱动的下一代建站引擎。', align:'left' } },
-        { id: bid(), type: 'list',     x:500, y:70,  w:400, h:120, zIndex:1, content:{ items:['产品','定价','文档','联系我们'], style:'bullet' } },
+        { id: bid(), type: 'text',     x:40,  y:120, w:400, h:60,  zIndex:1, content:{ text:'A next-generation website engine powered by natural language and visual sketches.', align:'left' } },
+        { id: bid(), type: 'list',     x:500, y:70,  w:400, h:120, zIndex:1, content:{ items:['Product','Pricing','Docs','Contact Us'], style:'bullet' } },
       ],
     },
   ];

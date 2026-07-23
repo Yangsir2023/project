@@ -34,43 +34,43 @@ function sg(v) { return Math.round(v / 8) * 8; }
    ══════════════════════════════════════════════════════════════════ */
 export async function generateSkeleton(model, prompt, log = () => {}) {
 
-  log('🧠 解析网站结构意图...');
+  log('🧠 Parsing website structure intent...');
 
-  const systemInstruction = `你是一个专业的网站架构师和UI设计师。
-用户描述他们想要的网站，你需要将网站分解成多个"幻灯片"（页面区块），每张幻灯片代表网站的一个独立区域（如导航栏、Hero区、功能展示、价格方案、页脚等）。
+  const systemInstruction = `You are a professional website architect and UI designer.
+The user describes their desired website. You need to break it down into multiple "slides" (page sections), where each slide represents a distinct area of the website (e.g., navbar, Hero section, feature showcase, pricing, footer, etc.).
 
-每张幻灯片包含若干"Visual Block"元素，这些元素有位置和尺寸信息（相对于1000×600的画布）。
+Each slide contains several "Visual Block" elements with position and size information (relative to a 1000×600 canvas).
 
-可用的 block 类型：
-- heading  : 标题文字 (content: {text, level: "h1"|"h2"|"h3", align: "left"|"center"|"right"})
-- text     : 段落文字 (content: {text, align: "left"|"center"|"right"})
-- image    : 图片/图片占位 (content: {src: "", alt, fit: "cover"|"contain"})
-- button   : 按钮 (content: {text, variant: "primary"|"secondary"|"ghost"|"danger", href: "#"})
-- card     : 卡片 (content: {title, body, hasImage: true|false})
-- list     : 列表 (content: {items: ["...","..."], style: "bullet"|"number"})
-- hero     : Hero大区块 (content: {title, sub, cta})
-- nav      : 导航栏 (content: {logo, links: ["首页","功能"], cta})
-- badge    : 徽章/标签 (content: {text, color: "#6366f1"})
-- divider  : 分割线 (content: {style: "line"})
+Available block types:
+- heading  : Heading text (content: {text, level: "h1"|"h2"|"h3", align: "left"|"center"|"right"})
+- text     : Paragraph text (content: {text, align: "left"|"center"|"right"})
+- image    : Image / image placeholder (content: {src: "", alt, fit: "cover"|"contain"})
+- button   : Button (content: {text, variant: "primary"|"secondary"|"ghost"|"danger", href: "#"})
+- card     : Card (content: {title, body, hasImage: true|false})
+- list     : List (content: {items: ["...","..."], style: "bullet"|"number"})
+- hero     : Hero section (content: {title, sub, cta})
+- nav      : Navbar (content: {logo, links: ["Home","Features"], cta})
+- badge    : Badge / tag (content: {text, color: "#6366f1"})
+- divider  : Divider line (content: {style: "line"})
 
-重要规则：
-1. 合理分配位置：x,y,w,h 都是像素值，画布大小 1000×600，要避免严重重叠
-2. 每张幻灯片 3-8 个 blocks，精心布局，代表真实的网站区域
-3. 生成 3-6 张幻灯片，覆盖完整的网站结构
-4. bgColor 使用深色系（如 #0f172a, #1e293b）或根据风格选择
-5. 文字内容要有实际意义，符合用户需求
+Important rules:
+1. Assign positions reasonably: x,y,w,h are pixel values on a 1000×600 canvas; avoid serious overlaps
+2. Each slide should have 3–8 blocks, carefully laid out representing real website areas
+3. Generate 3–6 slides covering the complete website structure
+4. bgColor should use dark tones (e.g., #0f172a, #1e293b) or match the intended style
+5. Text content must be meaningful and relevant to the user's needs
 
-返回格式（纯 JSON，不要 markdown）：
+Return format (pure JSON only, no markdown):
 [
   {
     "id": "slide-1",
-    "name": "导航栏",
+    "name": "Navbar + Hero",
     "status": "skeleton",
     "bgColor": "#0f172a",
     "blocks": [
-      {"id": "b1", "type": "nav",     "x": 0,   "y": 0,   "w": 1000, "h": 60,  "zIndex": 1, "content": {"logo": "品牌名", "links": ["首页","功能","价格"], "cta": "开始使用"}},
-      {"id": "b2", "type": "hero",    "x": 100, "y": 80,  "w": 800,  "h": 200, "zIndex": 1, "content": {"title": "震撼大标题", "sub": "副标题内容", "cta": "立即体验"}},
-      {"id": "b3", "type": "button",  "x": 350, "y": 310, "w": 150,  "h": 48,  "zIndex": 1, "content": {"text": "免费开始", "variant": "primary", "href": "#"}}
+      {"id": "b1", "type": "nav",     "x": 0,   "y": 0,   "w": 1000, "h": 60,  "zIndex": 1, "content": {"logo": "Brand", "links": ["Home","Features","Pricing"], "cta": "Get Started"}},
+      {"id": "b2", "type": "hero",    "x": 100, "y": 80,  "w": 800,  "h": 200, "zIndex": 1, "content": {"title": "Catchy Headline", "sub": "Subtitle goes here", "cta": "Try Free"}},
+      {"id": "b3", "type": "button",  "x": 350, "y": 310, "w": 150,  "h": 48,  "zIndex": 1, "content": {"text": "Get Started", "variant": "primary", "href": "#"}}
     ]
   }
 ]`;
@@ -99,7 +99,7 @@ export async function generateSkeleton(model, prompt, log = () => {}) {
   // Normalize: ensure all slides have required fields
   return slides.map((s, i) => ({
     id:      s.id     || `slide-${Date.now()}-${i}`,
-    name:    s.name   || `幻灯片 ${i + 1}`,
+    name:    s.name   || `Slide ${i + 1}`,
     status:  'skeleton',
     bgColor: s.bgColor || '#1e293b',
     html:    '',
@@ -120,31 +120,31 @@ export async function generateSkeleton(model, prompt, log = () => {}) {
 function buildFallbackSlides(prompt) {
   return [
     {
-      id: 'slide-1', name: '导航 + Hero', status: 'skeleton', bgColor: '#0f172a',
+      id: 'slide-1', name: 'Navbar + Hero', status: 'skeleton', bgColor: '#0f172a',
       blocks: [
-        { id: bid(), type: 'nav',     x:0,  y:0,   w:1000, h:56,  zIndex:1, content:{ logo:'Bifrost', links:['首页','功能','关于'], cta:'开始使用' } },
-        { id: bid(), type: 'hero',    x:100,y:80,  w:800,  h:200, zIndex:1, content:{ title:'用自然语言，构建你的网站', sub:'告别空白画布，AI 瞬间生成可视化骨架', cta:'免费体验' } },
-        { id: bid(), type: 'badge',   x:420,y:60,  w:160,  h:32,  zIndex:2, content:{ text:'✨ 全新发布', color:'#6366f1' } },
-        { id: bid(), type: 'button',  x:360,y:304, w:140,  h:48,  zIndex:1, content:{ text:'立即体验', variant:'primary', href:'#' } },
-        { id: bid(), type: 'button',  x:520,y:304, w:120,  h:48,  zIndex:1, content:{ text:'查看演示', variant:'ghost', href:'#' } },
+        { id: bid(), type: 'nav',     x:0,  y:0,   w:1000, h:56,  zIndex:1, content:{ logo:'Bifrost', links:['Home','Features','About'], cta:'Get Started' } },
+        { id: bid(), type: 'hero',    x:100,y:80,  w:800,  h:200, zIndex:1, content:{ title:'Build Your Website with Natural Language', sub:'Say goodbye to blank canvases — AI generates your visual skeleton instantly', cta:'Try Free' } },
+        { id: bid(), type: 'badge',   x:420,y:60,  w:160,  h:32,  zIndex:2, content:{ text:'✨ Research Prototype', color:'#6366f1' } },
+        { id: bid(), type: 'button',  x:360,y:304, w:140,  h:48,  zIndex:1, content:{ text:'Get Started', variant:'primary', href:'#' } },
+        { id: bid(), type: 'button',  x:520,y:304, w:120,  h:48,  zIndex:1, content:{ text:'View Demo', variant:'ghost', href:'#' } },
       ],
     },
     {
-      id: 'slide-2', name: '功能特性', status: 'skeleton', bgColor: '#1e293b',
+      id: 'slide-2', name: 'Features', status: 'skeleton', bgColor: '#1e293b',
       blocks: [
-        { id: bid(), type: 'heading', x:200,y:40,  w:600,  h:70,  zIndex:1, content:{ text:'三大核心优势', level:'h2', align:'center' } },
-        { id: bid(), type: 'card',    x:40, y:130, w:280,  h:200, zIndex:1, content:{ title:'⚡ 瞬间生成', body:'输入意图，0.1秒生成完整骨架', hasImage:false } },
-        { id: bid(), type: 'card',    x:360,y:130, w:280,  h:200, zIndex:1, content:{ title:'🎨 PPT式编辑', body:'像改幻灯片一样自由修改', hasImage:false } },
-        { id: bid(), type: 'card',    x:680,y:130, w:280,  h:200, zIndex:1, content:{ title:'🚀 一键上线', body:'从想法到上线，分钟级交付', hasImage:false } },
+        { id: bid(), type: 'heading', x:200,y:40,  w:600,  h:70,  zIndex:1, content:{ text:'Three Core Advantages', level:'h2', align:'center' } },
+        { id: bid(), type: 'card',    x:40, y:130, w:280,  h:200, zIndex:1, content:{ title:'⚡ Instant Generation', body:'Describe your intent — get a complete skeleton in seconds', hasImage:false } },
+        { id: bid(), type: 'card',    x:360,y:130, w:280,  h:200, zIndex:1, content:{ title:'🎨 Slide-Style Editing', body:'Edit freely like rearranging presentation slides', hasImage:false } },
+        { id: bid(), type: 'card',    x:680,y:130, w:280,  h:200, zIndex:1, content:{ title:'🚀 One-Click Deploy', body:'From idea to live site — delivery in minutes', hasImage:false } },
       ],
     },
     {
-      id: 'slide-3', name: '底部', status: 'skeleton', bgColor: '#0a0d14',
+      id: 'slide-3', name: 'Footer', status: 'skeleton', bgColor: '#0a0d14',
       blocks: [
         { id: bid(), type: 'divider',  x:40, y:40,  w:920, h:16,  zIndex:1, content:{ style:'line' } },
         { id: bid(), type: 'heading',  x:40, y:80,  w:400, h:50,  zIndex:1, content:{ text:'Bifrost', level:'h3', align:'left' } },
-        { id: bid(), type: 'text',     x:40, y:140, w:400, h:60,  zIndex:1, content:{ text:'以自然语言与可视化草图驱动的下一代建站引擎。', align:'left' } },
-        { id: bid(), type: 'list',     x:500,y:80,  w:460, h:160, zIndex:1, content:{ items:['产品','定价','文档','联系我们'], style:'bullet' } },
+        { id: bid(), type: 'text',     x:40, y:140, w:400, h:60,  zIndex:1, content:{ text:'A next-generation website engine powered by natural language and visual sketches.', align:'left' } },
+        { id: bid(), type: 'list',     x:500,y:80,  w:460, h:160, zIndex:1, content:{ items:['Product','Pricing','Docs','Contact Us'], style:'bullet' } },
         { id: bid(), type: 'text',     x:40, y:540, w:920, h:40,  zIndex:1, content:{ text:'© 2025 Bifrost. All rights reserved.', align:'center' } },
       ],
     },
@@ -159,29 +159,29 @@ export async function compileSlide(model, slide, sitePrompt) {
     `[${b.type}] "${JSON.stringify(b.content).slice(0, 80)}" at (${b.x},${b.y}) size ${b.w}×${b.h}`
   ).join('\n');
 
-  const systemInstruction = `你是一个专业的前端开发工程师，擅长将设计稿转化为高质量 HTML/CSS。
-用户有一张"幻灯片"（网站区块的可视化草图），包含若干 Visual Blocks，你需要将其编译为真实可运行的单页 HTML 片段。
+  const systemInstruction = `You are a professional front-end developer skilled at converting design mockups into high-quality HTML/CSS.
+The user has a "slide" (a visual sketch of a website section) containing several Visual Blocks. Compile it into a real, runnable single-page HTML fragment.
 
-要求：
-1. 输出完整可运行的 HTML（包含 <html><head><body> 标签）
-2. 使用内联 <style> 标签包含所有 CSS，不依赖外部资源
-3. 严格还原 block 的相对位置和大小比例（画布 1000×600，换算成百分比布局）
-4. 暗色主题为主，使用背景色 ${slide.bgColor || '#1e293b'}
-5. 字体使用 system-ui 或 sans-serif
-6. 按钮、卡片要有 hover 效果
-7. 代码干净，可直接在浏览器运行
-8. 不要任何注释，不要 markdown，只输出 HTML`;
+Requirements:
+1. Output complete runnable HTML (with <html><head><body> tags)
+2. Use inline <style> tags for all CSS; no external dependencies
+3. Strictly restore block relative positions and sizes (canvas 1000×600, convert to percentage layout)
+4. Match the background colour: ${slide.bgColor || '#1e293b'}
+5. Use system-ui or sans-serif font
+6. Buttons and cards must have hover effects
+7. Clean code, directly runnable in browser
+8. No comments, no markdown, output HTML only`;
 
   const userMessage = `
-网站整体需求：${sitePrompt}
+Site requirement: ${sitePrompt}
 
-幻灯片名称：${slide.name}
-背景色：${slide.bgColor || '#1e293b'}
+Slide name: ${slide.name}
+Background color: ${slide.bgColor || '#1e293b'}
 
-Visual Blocks：
+Visual Blocks:
 ${blockSummary}
 
-请将这些 Visual Blocks 编译为完整的 HTML 页面。`;
+Please compile these Visual Blocks into a complete HTML page.`;
 
   const result = await model.generateContent({
     contents: [{ role: 'user', parts: [{ text: userMessage }] }],
@@ -222,30 +222,30 @@ export async function generateFinalCode(model, slides, sitePrompt) {
     return { name: s.name, body, styles };
   });
 
-  const systemInstruction = `你是一个专业的前端开发工程师。
-将多个网站区块的 HTML 片段合并为一个完整的、专业的单页网站。
+  const systemInstruction = `You are a professional front-end developer.
+Merge multiple website section HTML fragments into one complete, professional single-page website.
 
-要求：
-1. 输出一个完整的 HTML 文档
-2. 整合所有区块的样式，消除冲突
-3. 区块之间有自然的过渡
-4. 添加平滑滚动
-5. 响应式设计（移动端友好）
-6. 整体风格统一，暗色主题
-7. 代码质量高，可直接部署
-8. 只输出 HTML，不要 markdown，不要注释`;
+Requirements:
+1. Output a complete HTML document
+2. Integrate all section styles, resolve conflicts
+3. Natural transitions between sections
+4. Add smooth scrolling
+5. Responsive design (mobile-friendly)
+6. Unified theme, consistent style
+7. High code quality, ready for deployment
+8. Output HTML only, no markdown, no comments`;
 
   const userMessage = `
-网站需求：${sitePrompt}
+Site requirement: ${sitePrompt}
 
-共 ${sections.length} 个区块：
+Total ${sections.length} sections:
 ${sections.map((s, i) => `
---- 区块${i + 1}: ${s.name} ---
-样式：${s.styles.slice(0, 500)}...
+--- Section ${i + 1}: ${s.name} ---
+Styles: ${s.styles.slice(0, 500)}...
 HTML: ${s.body.slice(0, 600)}...
 `).join('\n')}
 
-请将所有区块合并为完整网站 HTML。`;
+Please merge all sections into a complete website HTML.`;
 
   const result = await model.generateContent({
     contents: [{ role: 'user', parts: [{ text: userMessage }] }],
